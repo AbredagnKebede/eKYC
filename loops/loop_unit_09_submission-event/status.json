@@ -1,0 +1,30 @@
+{
+  "loop_type": "component",
+  "state": "todo",
+  "depends_on": [
+    "loop_unit_08_submission-queue"
+  ],
+  "parallel_group": null,
+  "boundaries": [
+    "queue"
+  ],
+  "target_paths": [
+    "src/events/application_submitted.py"
+  ],
+  "tests": {
+    "unit": {
+      "run": 0,
+      "pass": 0,
+      "coverage": 0
+    },
+    "integration": {
+      "run": 0,
+      "pass": 0
+    },
+    "contract": {
+      "run": 0,
+      "pass": 0
+    }
+  },
+  "last_verified_at": null
+}

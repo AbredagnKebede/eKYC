@@ -1,0 +1,30 @@
+{
+  "loop_type": "component",
+  "state": "todo",
+  "depends_on": [
+    "loop_unit_02_cache-redis"
+  ],
+  "parallel_group": null,
+  "boundaries": [
+    "queue"
+  ],
+  "target_paths": [
+    "src/infrastructure/queue.py"
+  ],
+  "tests": {
+    "unit": {
+      "run": 0,
+      "pass": 0,
+      "coverage": 0
+    },
+    "integration": {
+      "run": 0,
+      "pass": 0
+    },
+    "contract": {
+      "run": 0,
+      "pass": 0
+    }
+  },
+  "last_verified_at": null
+}

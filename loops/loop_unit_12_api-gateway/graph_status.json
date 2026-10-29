@@ -1,0 +1,8 @@
+{
+  "loop_type": "component",
+  "node_ids": [
+    "api_gateway"
+  ],
+  "state": "todo",
+  "last_verified_at": null
+}

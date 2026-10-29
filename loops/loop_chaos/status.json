@@ -1,0 +1,29 @@
+{
+  "loop_type": "chaos",
+  "state": "todo",
+  "depends_on": [
+    "loop_journey_01_account-opening",
+    "loop_journey_02_consent-refusal",
+    "loop_journey_03_fayda-format-lockout",
+    "loop_journey_04_otp-retry-fallback",
+    "loop_journey_05_liveness-spoof-rejection",
+    "loop_journey_06_dynamic-fields-validation",
+    "loop_journey_07_bank-offline-retry",
+    "loop_journey_08_async-bank-callback"
+  ],
+  "boundaries": [
+    "db",
+    "queue",
+    "external_api",
+    "worker"
+  ],
+  "target_paths": [],
+  "tests": {
+    "chaos": {
+      "run": 0,
+      "pass": 0,
+      "scenarios_verified": 0
+    }
+  },
+  "last_verified_at": null
+}

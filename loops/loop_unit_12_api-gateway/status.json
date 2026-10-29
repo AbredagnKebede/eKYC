@@ -1,0 +1,35 @@
+{
+  "loop_type": "component",
+  "state": "todo",
+  "depends_on": [
+    "loop_unit_02_cache-redis",
+    "loop_unit_05_identity-service",
+    "loop_unit_10_onboarding-service"
+  ],
+  "parallel_group": null,
+  "boundaries": [
+    "db"
+  ],
+  "target_paths": [
+    "src/api/main.py",
+    "src/api/routes/applications.py",
+    "src/api/routes/banks.py",
+    "src/api/middleware.py"
+  ],
+  "tests": {
+    "unit": {
+      "run": 0,
+      "pass": 0,
+      "coverage": 0
+    },
+    "integration": {
+      "run": 0,
+      "pass": 0
+    },
+    "contract": {
+      "run": 0,
+      "pass": 0
+    }
+  },
+  "last_verified_at": null
+}

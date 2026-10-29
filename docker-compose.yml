@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ekyc-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ekyc_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ekyc_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: ekyc-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  fayda-sandbox:
+    image: python:3.12-alpine
+    container_name: ekyc-fayda-sandbox
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./sandbox:/app/sandbox
+    working_dir: /app
+    command: python sandbox/fayda_sandbox.py
+    environment:
+      PORT: 8081
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8081/health\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  cbs-sandbox:
+    image: python:3.12-alpine
+    container_name: ekyc-cbs-sandbox
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./sandbox:/app/sandbox
+    working_dir: /app
+    command: python sandbox/bank_cbs_sandbox.py
+    environment:
+      PORT: 8082
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8082/health\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: ekyc-api
+    ports:
+      - "8005:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ekyc_db
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: dev-insecure-jwt-secret-replace-in-prod
+      HMAC_SALT_KEY: dev-insecure-hmac-salt-replace-in-prod
+      AES_MASTER_KEY: "01234567890123456789012345678901"
+      FAYDA_API_KEY: dev-fayda-key
+      FAYDA_SANDBOX_URL: http://fayda-sandbox:8081/fayda/v2
+      BANK_API_KEY: dev-bank-key
+      BANK_CBS_SANDBOX_URL: http://cbs-sandbox:8082/cbs/v1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: ekyc-worker
+    command: python -m src.workers.bank_submission
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ekyc_db
+      REDIS_URL: redis://redis:6379/0
+      HMAC_SALT_KEY: dev-insecure-hmac-salt-replace-in-prod
+      AES_MASTER_KEY: "01234567890123456789012345678901"
+      BANK_API_KEY: dev-bank-key
+      BANK_CBS_SANDBOX_URL: http://cbs-sandbox:8082/cbs/v1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

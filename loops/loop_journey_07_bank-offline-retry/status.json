@@ -1,0 +1,33 @@
+{
+  "loop_type": "journey",
+  "journey_file": "journeys/journey_07_bank-offline-retry.md",
+  "state": "todo",
+  "depends_on": [
+    "loop_unit_01_db-postgres",
+    "loop_unit_02_cache-redis",
+    "loop_unit_03_audit-service",
+    "loop_unit_06_bank-cbs-api",
+    "loop_unit_07_bank-adapter-service",
+    "loop_unit_08_submission-queue",
+    "loop_unit_09_submission-event",
+    "loop_unit_10_onboarding-service",
+    "loop_unit_11_submission-worker",
+    "loop_unit_12_api-gateway",
+    "loop_unit_13_mobile-ui"
+  ],
+  "boundaries": [
+    "db",
+    "queue",
+    "external_api",
+    "worker"
+  ],
+  "target_paths": [],
+  "tests": {
+    "journey": {
+      "run": 0,
+      "pass": 0,
+      "assertion_points_verified": 0
+    }
+  },
+  "last_verified_at": null
+}

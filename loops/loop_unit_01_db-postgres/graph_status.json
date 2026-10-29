@@ -1,0 +1,8 @@
+{
+  "loop_type": "component",
+  "node_ids": [
+    "db_postgres"
+  ],
+  "state": "done",
+  "last_verified_at": "2026-10-29T13:35:43Z"
+}

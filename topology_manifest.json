@@ -1,0 +1,125 @@
+{
+  "generated_at": "2026-10-29T13:01:52.108678+00:00",
+  "source": {
+    "graph": "system_graph.json",
+    "guide": "system_guide.md"
+  },
+  "queues": [
+    {
+      "name": "bank_submission_queue",
+      "node_id": "bank_submission_queue",
+      "spec_ref": "\u00a75",
+      "publishers": [
+        "onboarding_service"
+      ],
+      "consumers": [
+        "bank_submission_worker"
+      ],
+      "owner_loop": "loop_unit_08_submission-queue",
+      "target_paths": [
+        "src/infrastructure/queue.py"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "application_submitted_event",
+      "node_id": "application_submitted_event",
+      "spec_ref": "\u00a75",
+      "schema_ref": "",
+      "publishers": [
+        "onboarding_service"
+      ],
+      "consumers": [
+        "bank_submission_worker"
+      ],
+      "publisher_test": {
+        "owner_loop": "loop_unit_09_submission-event",
+        "path": "tests/contract/test_application_submitted_event_publisher"
+      },
+      "consumer_test": {
+        "owner_loop": "loop_unit_09_submission-event",
+        "path": "tests/contract/test_application_submitted_event_consumer"
+      }
+    }
+  ],
+  "consumers": [
+    {
+      "node_id": "bank_submission_worker",
+      "queue": "bank_submission_queue",
+      "spec_ref": "\u00a75",
+      "process_entrypoint": "python -m src.workers.bank_submission",
+      "owner_loop": "loop_unit_11_submission-worker",
+      "target_paths": [
+        "src/workers/bank_submission.py"
+      ]
+    },
+    {
+      "node_id": "bank_submission_worker",
+      "queue": "Application Submitted Event",
+      "spec_ref": "\u00a75",
+      "process_entrypoint": "python -m src.workers.bank_submission",
+      "owner_loop": "loop_unit_11_submission-worker",
+      "target_paths": [
+        "src/workers/bank_submission.py"
+      ]
+    }
+  ],
+  "external_apis": [
+    {
+      "name": "Fayda eKYC API",
+      "node_id": "fayda_ekyc_api",
+      "spec_ref": "\u00a73",
+      "credential_env": "FAYDA_API_KEY",
+      "sandbox_env": "FAYDA_SANDBOX_URL",
+      "sandbox_base_url": "http://127.0.0.1:8081/fayda/v2",
+      "callers": [
+        "identity_service"
+      ],
+      "owner_loop": "loop_unit_04_fayda-api",
+      "target_paths": [
+        "src/clients/fayda_client.py",
+        "sandbox/fayda_sandbox.py"
+      ]
+    },
+    {
+      "name": "Bank CBS API",
+      "node_id": "bank_cbs_api",
+      "spec_ref": "\u00a73",
+      "credential_env": "BANK_API_KEY",
+      "sandbox_env": "BANK_CBS_SANDBOX_URL",
+      "sandbox_base_url": "http://127.0.0.1:8082/cbs/v1",
+      "callers": [
+        "bank_adapter_service"
+      ],
+      "owner_loop": "loop_unit_06_bank-cbs-api",
+      "target_paths": [
+        "src/clients/bank_cbs_client.py",
+        "sandbox/bank_cbs_sandbox.py"
+      ]
+    }
+  ],
+  "deployment_artifacts": [
+    {
+      "requirement": "Dockerfile.api",
+      "spec_ref": "\u00a7 Deployment",
+      "target_paths": [
+        "Dockerfile.api"
+      ]
+    },
+    {
+      "requirement": "Dockerfile.worker",
+      "spec_ref": "\u00a7 Deployment",
+      "target_paths": [
+        "Dockerfile.worker"
+      ]
+    },
+    {
+      "requirement": "docker-compose.yml",
+      "spec_ref": "\u00a7 Deployment",
+      "target_paths": [
+        "docker-compose.yml"
+      ]
+    }
+  ]
+}

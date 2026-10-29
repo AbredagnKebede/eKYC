@@ -1,0 +1,31 @@
+{
+  "loop_type": "component",
+  "state": "todo",
+  "depends_on": [
+    "loop_unit_06_bank-cbs-api"
+  ],
+  "parallel_group": null,
+  "boundaries": [
+    "external_api"
+  ],
+  "target_paths": [
+    "src/services/bank_adapter.py",
+    "src/adapters/awash_finacle.py"
+  ],
+  "tests": {
+    "unit": {
+      "run": 0,
+      "pass": 0,
+      "coverage": 0
+    },
+    "integration": {
+      "run": 0,
+      "pass": 0
+    },
+    "contract": {
+      "run": 0,
+      "pass": 0
+    }
+  },
+  "last_verified_at": null
+}

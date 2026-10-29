@@ -1,0 +1,26 @@
+{
+  "loop_type": "journey",
+  "journey_file": "journeys/journey_03_fayda-format-lockout.md",
+  "state": "todo",
+  "depends_on": [
+    "loop_unit_01_db-postgres",
+    "loop_unit_02_cache-redis",
+    "loop_unit_03_audit-service",
+    "loop_unit_05_identity-service",
+    "loop_unit_10_onboarding-service",
+    "loop_unit_12_api-gateway",
+    "loop_unit_13_mobile-ui"
+  ],
+  "boundaries": [
+    "db"
+  ],
+  "target_paths": [],
+  "tests": {
+    "journey": {
+      "run": 0,
+      "pass": 0,
+      "assertion_points_verified": 0
+    }
+  },
+  "last_verified_at": null
+}

@@ -1,0 +1,36 @@
+{
+  "loop_type": "component",
+  "state": "todo",
+  "depends_on": [
+    "loop_unit_01_db-postgres",
+    "loop_unit_03_audit-service",
+    "loop_unit_05_identity-service",
+    "loop_unit_08_submission-queue",
+    "loop_unit_09_submission-event"
+  ],
+  "parallel_group": null,
+  "boundaries": [
+    "db",
+    "queue"
+  ],
+  "target_paths": [
+    "src/services/onboarding.py",
+    "src/state/machine.py"
+  ],
+  "tests": {
+    "unit": {
+      "run": 0,
+      "pass": 0,
+      "coverage": 0
+    },
+    "integration": {
+      "run": 0,
+      "pass": 0
+    },
+    "contract": {
+      "run": 0,
+      "pass": 0
+    }
+  },
+  "last_verified_at": null
+}

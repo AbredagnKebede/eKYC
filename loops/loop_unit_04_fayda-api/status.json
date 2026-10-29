@@ -1,0 +1,29 @@
+{
+  "loop_type": "component",
+  "state": "todo",
+  "depends_on": [],
+  "parallel_group": null,
+  "boundaries": [
+    "external_api"
+  ],
+  "target_paths": [
+    "src/clients/fayda_client.py",
+    "sandbox/fayda_sandbox.py"
+  ],
+  "tests": {
+    "unit": {
+      "run": 0,
+      "pass": 0,
+      "coverage": 0
+    },
+    "integration": {
+      "run": 0,
+      "pass": 0
+    },
+    "contract": {
+      "run": 0,
+      "pass": 0
+    }
+  },
+  "last_verified_at": null
+}

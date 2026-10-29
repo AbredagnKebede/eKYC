@@ -1,0 +1,30 @@
+{
+  "loop_type": "component",
+  "state": "todo",
+  "depends_on": [],
+  "parallel_group": null,
+  "boundaries": [
+    "db"
+  ],
+  "target_paths": [
+    "src/infrastructure/redis.py",
+    "src/infrastructure/rate_limiter.py",
+    "src/infrastructure/session.py"
+  ],
+  "tests": {
+    "unit": {
+      "run": 0,
+      "pass": 0,
+      "coverage": 0
+    },
+    "integration": {
+      "run": 0,
+      "pass": 0
+    },
+    "contract": {
+      "run": 0,
+      "pass": 0
+    }
+  },
+  "last_verified_at": null
+}

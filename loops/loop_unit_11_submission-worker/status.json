@@ -1,0 +1,37 @@
+{
+  "loop_type": "component",
+  "state": "todo",
+  "depends_on": [
+    "loop_unit_01_db-postgres",
+    "loop_unit_03_audit-service",
+    "loop_unit_07_bank-adapter-service",
+    "loop_unit_08_submission-queue",
+    "loop_unit_09_submission-event"
+  ],
+  "parallel_group": null,
+  "boundaries": [
+    "db",
+    "queue",
+    "external_api",
+    "worker"
+  ],
+  "target_paths": [
+    "src/workers/bank_submission.py"
+  ],
+  "tests": {
+    "unit": {
+      "run": 0,
+      "pass": 0,
+      "coverage": 0
+    },
+    "integration": {
+      "run": 0,
+      "pass": 0
+    },
+    "contract": {
+      "run": 0,
+      "pass": 0
+    }
+  },
+  "last_verified_at": null
+}

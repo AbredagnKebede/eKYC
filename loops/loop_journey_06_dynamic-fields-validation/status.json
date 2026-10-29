@@ -1,0 +1,25 @@
+{
+  "loop_type": "journey",
+  "journey_file": "journeys/journey_06_dynamic-fields-validation.md",
+  "state": "todo",
+  "depends_on": [
+    "loop_unit_01_db-postgres",
+    "loop_unit_02_cache-redis",
+    "loop_unit_07_bank-adapter-service",
+    "loop_unit_10_onboarding-service",
+    "loop_unit_12_api-gateway",
+    "loop_unit_13_mobile-ui"
+  ],
+  "boundaries": [
+    "db"
+  ],
+  "target_paths": [],
+  "tests": {
+    "journey": {
+      "run": 0,
+      "pass": 0,
+      "assertion_points_verified": 0
+    }
+  },
+  "last_verified_at": null
+}

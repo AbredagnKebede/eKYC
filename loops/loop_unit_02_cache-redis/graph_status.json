@@ -1,0 +1,8 @@
+{
+  "loop_type": "component",
+  "node_ids": [
+    "cache_redis"
+  ],
+  "state": "todo",
+  "last_verified_at": null
+}

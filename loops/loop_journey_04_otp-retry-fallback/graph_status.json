@@ -1,0 +1,7 @@
+{
+  "loop_type": "journey",
+  "journey_file": "journeys/journey_04_otp-retry-fallback.md",
+  "state": "todo",
+  "assertion_points_verified": 0,
+  "last_verified_at": null
+}

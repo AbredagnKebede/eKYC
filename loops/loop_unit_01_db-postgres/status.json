@@ -1,0 +1,31 @@
+{
+  "loop_type": "component",
+  "state": "done",
+  "depends_on": [],
+  "parallel_group": null,
+  "boundaries": [
+    "db"
+  ],
+  "target_paths": [
+    "src/models/base.py",
+    "src/models/application.py",
+    "src/models/audit.py",
+    "migrations/env.py"
+  ],
+  "tests": {
+    "unit": {
+      "run": 7,
+      "pass": 7,
+      "coverage": 91.84
+    },
+    "integration": {
+      "run": 2,
+      "pass": 2
+    },
+    "contract": {
+      "run": 0,
+      "pass": 0
+    }
+  },
+  "last_verified_at": "2026-10-29T13:35:43Z"
+}

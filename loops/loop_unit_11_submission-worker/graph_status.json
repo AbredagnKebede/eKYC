@@ -1,0 +1,8 @@
+{
+  "loop_type": "component",
+  "node_ids": [
+    "bank_submission_worker"
+  ],
+  "state": "todo",
+  "last_verified_at": null
+}
