@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_03_audit-service"
-SRC_PATHS="src/services/audit.py src/security/hash_chain.py"
+SRC_PATHS="src/services src/security"
 UNIT_TESTS="tests/unit/test_audit_service.py"
 INTEGRATION_TESTS="tests/integration/test_audit_service.py"
 BOUNDARIES="db"
