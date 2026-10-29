@@ -6,7 +6,7 @@
 | 2 | `loop_unit_02_cache-redis` | component | `system_guide.md §2, §6` | `src/infrastructure/redis.py, src/infrastructure/rate_limiter.py, src/infrastructure/session.py` | §2, §6 | - | tests/unit/test_cache_redis.py (≥85% coverage) | done |
 | 3 | `loop_unit_03_audit-service` | component | `system_guide.md §6` | `src/services/audit.py, src/security/hash_chain.py` | §6 | - | tests/unit/test_audit_service.py (≥85% coverage) | done |
 | 4 | `loop_unit_04_fayda-api` | component | `system_guide.md §3` | `src/clients/fayda_client.py, sandbox/fayda_sandbox.py` | §3 | - | tests/unit/test_fayda_client.py (≥85% coverage) | done |
-| 5 | `loop_unit_05_identity-service` | component | `system_guide.md §3, §6` | `src/services/identity.py, src/security/encryption.py, src/security/liveness.py` | §3, §6 | - | tests/unit/test_identity_service.py (≥85% coverage) | todo |
+| 5 | `loop_unit_05_identity-service` | component | `system_guide.md §3, §6` | `src/services/identity.py, src/security/encryption.py, src/security/liveness.py` | §3, §6 | - | tests/unit/test_identity_service.py (≥85% coverage) | done |
 | 6 | `loop_unit_06_bank-cbs-api` | component | `system_guide.md §3` | `src/clients/bank_cbs_client.py, sandbox/bank_cbs_sandbox.py` | §3 | - | tests/unit/test_bank_cbs_client.py (≥85% coverage) | todo |
 | 7 | `loop_unit_07_bank-adapter-service` | component | `system_guide.md §3` | `src/services/bank_adapter.py, src/adapters/awash_finacle.py` | §3 | - | tests/unit/test_bank_adapter.py (≥85% coverage) | todo |
 | 8 | `loop_unit_08_submission-queue` | component | `system_guide.md §5` | `src/infrastructure/queue.py` | §5 | - | tests/unit/test_submission_queue.py (≥85% coverage) | todo |

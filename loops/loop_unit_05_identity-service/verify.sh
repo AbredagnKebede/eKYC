@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_05_identity-service"
-SRC_PATHS="src/services/identity.py src/security/encryption.py src/security/liveness.py"
+SRC_PATHS="src/services src/security"
 UNIT_TESTS="tests/unit/test_identity_service.py"
 INTEGRATION_TESTS="tests/integration/test_identity_service.py"
 BOUNDARIES="db,external_api"
