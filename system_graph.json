@@ -68,9 +68,9 @@
       "label": "Redis Session and Rate Limit Cache",
       "type": "model",
       "spec_section": "\u00a72",
-      "state": "todo",
+      "state": "done",
       "loop": "loop_unit_02_cache-redis",
-      "last_verified_at": null
+      "last_verified_at": "2026-10-29T13:43:15Z"
     },
     {
       "id": "bank_submission_queue",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-10-29T13:37:42.481736+00:00"
+  "last_regenerated": "2026-10-29T13:44:25.510797+00:00"
 }

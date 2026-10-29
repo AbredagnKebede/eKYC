@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_02_cache-redis"
-SRC_PATHS="src/infrastructure/redis.py src/infrastructure/rate_limiter.py src/infrastructure/session.py"
+SRC_PATHS="src/infrastructure"
 UNIT_TESTS="tests/unit/test_cache_redis.py"
 INTEGRATION_TESTS="tests/integration/test_cache_redis.py"
 BOUNDARIES="db"
