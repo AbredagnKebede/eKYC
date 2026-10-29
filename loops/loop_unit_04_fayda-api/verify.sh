@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_04_fayda-api"
-SRC_PATHS="src/clients/fayda_client.py sandbox/fayda_sandbox.py"
+SRC_PATHS="src/clients"
 UNIT_TESTS="tests/unit/test_fayda_client.py"
 INTEGRATION_TESTS="tests/integration/test_fayda_client.py"
 BOUNDARIES="external_api"

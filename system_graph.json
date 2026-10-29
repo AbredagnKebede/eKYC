@@ -110,9 +110,9 @@
       "sandbox_env": "FAYDA_SANDBOX_URL",
       "sandbox_base_url": "http://127.0.0.1:8081/fayda/v2",
       "spec_section": "\u00a73",
-      "state": "todo",
+      "state": "done",
       "loop": "loop_unit_04_fayda-api",
-      "last_verified_at": null
+      "last_verified_at": "2026-10-29T17:03:15Z"
     },
     {
       "id": "bank_cbs_api",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-10-29T13:53:16.163454+00:00"
+  "last_regenerated": "2026-10-29T14:04:00.447297+00:00"
 }
