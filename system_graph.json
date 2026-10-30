@@ -98,9 +98,9 @@
       "event_name": "application_submitted_event",
       "type": "event",
       "spec_section": "\u00a75",
-      "state": "todo",
+      "state": "done",
       "loop": "loop_unit_09_submission-event",
-      "last_verified_at": null
+      "last_verified_at": "2026-10-30T22:38:09Z"
     },
     {
       "id": "fayda_ekyc_api",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-10-30T19:34:05.945732+00:00"
+  "last_regenerated": "2026-10-30T19:39:28.927118+00:00"
 }

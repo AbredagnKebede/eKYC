@@ -17,9 +17,10 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_09_submission-event"
-SRC_PATHS="src/events/application_submitted.py"
+SRC_PATHS="src.events.application_submitted"
 UNIT_TESTS="tests/unit/test_submission_event.py"
 INTEGRATION_TESTS="tests/integration/test_submission_event.py"
+CONTRACT_TESTS="tests/contract/test_submission_event.py"
 BOUNDARIES="queue"
 SERVICES="redis"
 COVERAGE_MIN="85"
@@ -41,12 +42,12 @@ fi
 
 # ---- 2. tests + coverage
 # shellcheck disable=SC2086
-run_tests_with_coverage "$COVERAGE_MIN" "$SRC_PATHS" $UNIT_TESTS $INTEGRATION_TESTS
+run_tests_with_coverage "$COVERAGE_MIN" "$SRC_PATHS" $UNIT_TESTS $INTEGRATION_TESTS $CONTRACT_TESTS
 
 # ---- 3. assertion density: no padded test counts
 step "assertion density"
 # shellcheck disable=SC2086
-python3 .vibearch/scripts/check_assertions.py $UNIT_TESTS $INTEGRATION_TESTS
+python3 .vibearch/scripts/check_assertions.py $UNIT_TESTS $INTEGRATION_TESTS $CONTRACT_TESTS
 
 # ---- 4. no silent mocks at a boundary this loop actually touches
 step "no silent mocks (component)"
@@ -56,7 +57,7 @@ if [[ -n "$BOUNDARIES" ]]; then
   # shellcheck disable=SC2086
   python3 .vibearch/scripts/check_mocks.py --mode component \
     --boundaries "$BOUNDARIES" \
-    --tests $UNIT_TESTS $INTEGRATION_TESTS \
+    --tests $UNIT_TESTS $INTEGRATION_TESTS $CONTRACT_TESTS \
     --real-tests $INTEGRATION_TESTS
 else
   printf 'loop touches no critical boundary — nothing to prove\n'
