@@ -1,6 +1,6 @@
 {
   "loop_type": "component",
-  "state": "todo",
+  "state": "done",
   "depends_on": [
     "loop_unit_06_bank-cbs-api"
   ],
@@ -14,18 +14,18 @@
   ],
   "tests": {
     "unit": {
-      "run": 0,
-      "pass": 0,
-      "coverage": 0
+      "run": 6,
+      "pass": 6,
+      "coverage": 95.56
     },
     "integration": {
-      "run": 0,
-      "pass": 0
+      "run": 2,
+      "pass": 2
     },
     "contract": {
       "run": 0,
       "pass": 0
     }
   },
-  "last_verified_at": null
+  "last_verified_at": "2026-10-30T22:26:36Z"
 }

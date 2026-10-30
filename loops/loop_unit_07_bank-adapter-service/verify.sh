@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_07_bank-adapter-service"
-SRC_PATHS="src/services/bank_adapter.py src/adapters/awash_finacle.py"
+SRC_PATHS="src.services.bank_adapter src.adapters.awash_finacle"
 UNIT_TESTS="tests/unit/test_bank_adapter.py"
 INTEGRATION_TESTS="tests/integration/test_bank_adapter.py"
 BOUNDARIES="external_api"

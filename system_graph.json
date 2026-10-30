@@ -41,9 +41,9 @@
       "label": "Bank Adapter Service",
       "type": "service",
       "spec_section": "\u00a73",
-      "state": "todo",
+      "state": "done",
       "loop": "loop_unit_07_bank-adapter-service",
-      "last_verified_at": null
+      "last_verified_at": "2026-10-30T22:26:36Z"
     },
     {
       "id": "audit_service",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-10-30T19:21:25.974934+00:00"
+  "last_regenerated": "2026-10-30T19:28:44.309643+00:00"
 }
