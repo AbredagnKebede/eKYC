@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_08_submission-queue"
-SRC_PATHS="src/infrastructure/queue.py"
+SRC_PATHS="src.infrastructure.queue"
 UNIT_TESTS="tests/unit/test_submission_queue.py"
 INTEGRATION_TESTS="tests/integration/test_submission_queue.py"
 BOUNDARIES="queue"

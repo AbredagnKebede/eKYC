@@ -78,9 +78,9 @@
       "queue_name": "bank_submission_queue",
       "type": "queue",
       "spec_section": "\u00a75",
-      "state": "todo",
+      "state": "done",
       "loop": "loop_unit_08_submission-queue",
-      "last_verified_at": null
+      "last_verified_at": "2026-10-30T22:32:57Z"
     },
     {
       "id": "bank_submission_worker",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-10-30T19:28:44.309643+00:00"
+  "last_regenerated": "2026-10-30T19:34:05.945732+00:00"
 }
