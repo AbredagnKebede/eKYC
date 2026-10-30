@@ -122,9 +122,9 @@
       "sandbox_env": "BANK_CBS_SANDBOX_URL",
       "sandbox_base_url": "http://127.0.0.1:8082/cbs/v1",
       "spec_section": "\u00a73",
-      "state": "todo",
+      "state": "done",
       "loop": "loop_unit_06_bank-cbs-api",
-      "last_verified_at": null
+      "last_verified_at": "2026-10-30T22:20:12Z"
     }
   ],
   "edges": [
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-10-29T14:34:50.549664+00:00"
+  "last_regenerated": "2026-10-30T19:21:25.974934+00:00"
 }

@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_06_bank-cbs-api"
-SRC_PATHS="src/clients/bank_cbs_client.py sandbox/bank_cbs_sandbox.py"
+SRC_PATHS="src.clients.bank_cbs_client sandbox.bank_cbs_sandbox"
 UNIT_TESTS="tests/unit/test_bank_cbs_client.py"
 INTEGRATION_TESTS="tests/integration/test_bank_cbs_client.py"
 BOUNDARIES="external_api"
