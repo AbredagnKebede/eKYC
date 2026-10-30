@@ -23,9 +23,9 @@
       "label": "Onboarding State Machine Service",
       "type": "service",
       "spec_section": "\u00a74",
-      "state": "todo",
+      "state": "done",
       "loop": "loop_unit_10_onboarding-service",
-      "last_verified_at": null
+      "last_verified_at": "2026-10-30T22:54:55Z"
     },
     {
       "id": "identity_service",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-10-30T19:39:28.927118+00:00"
+  "last_regenerated": "2026-10-30T19:56:31.164344+00:00"
 }

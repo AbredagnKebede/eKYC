@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_10_onboarding-service"
-SRC_PATHS="src/services/onboarding.py src/state/machine.py"
+SRC_PATHS="src"
 UNIT_TESTS="tests/unit/test_onboarding_service.py"
 INTEGRATION_TESTS="tests/integration/test_onboarding_service.py"
 BOUNDARIES="db,queue"
@@ -34,10 +34,19 @@ printf 'verify: %s (component loop)\n' "$LOOP_NAME"
 
 # ---- 1. real boundaries must be up before integration tests run
 if [[ -n "$BOUNDARIES" && -n "$SERVICES" ]]; then
-  trap compose_down EXIT
+  trap 'compose_down; rm -f .coveragerc' EXIT
   # shellcheck disable=SC2086
   require_services $SERVICES
+else
+  trap 'rm -f .coveragerc' EXIT
 fi
+
+cat << 'EOF' > .coveragerc
+[report]
+include =
+    src/services/onboarding.py
+    src/state/machine.py
+EOF
 
 # ---- 2. tests + coverage
 # shellcheck disable=SC2086
