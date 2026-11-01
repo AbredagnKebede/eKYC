@@ -5,9 +5,9 @@
       "label": "Mobile App",
       "type": "ui",
       "spec_section": "\u00a71",
-      "state": "todo",
+      "state": "done",
       "loop": "loop_unit_13_mobile-ui",
-      "last_verified_at": null
+      "last_verified_at": "2026-11-01T16:06:00Z"
     },
     {
       "id": "api_gateway",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-11-01T12:39:55.622441+00:00"
+  "last_regenerated": "2026-11-01T13:07:50.820438+00:00"
 }

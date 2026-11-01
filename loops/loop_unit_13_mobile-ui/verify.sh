@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_13_mobile-ui"
-SRC_PATHS="ui/src/App.tsx ui/src/components/ConsentScreen.tsx ui/src/components/FaydaVerification.tsx ui/src/components/LivenessCapture.tsx"
+SRC_PATHS="src/ui"
 UNIT_TESTS="tests/unit/test_mobile_ui.py"
 INTEGRATION_TESTS=""
 BOUNDARIES=""
@@ -29,6 +29,11 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$(cd "$SELF_DIR/../.." && pwd)/.vibearch/scripts/verify_lib.sh"
 ROOT="$(repo_root "$SELF_DIR")"
 cd "$ROOT"
+
+if [[ -f "$ROOT/.venv/bin/activate" && -z "${VIRTUAL_ENV:-}" ]]; then
+  # shellcheck source=/dev/null
+  source "$ROOT/.venv/bin/activate"
+fi
 
 printf 'verify: %s (component loop)\n' "$LOOP_NAME"
 
