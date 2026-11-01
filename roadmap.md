@@ -12,7 +12,7 @@
 | 8 | `loop_unit_08_submission-queue` | component | `system_guide.md §5` | `src/infrastructure/queue.py` | §5 | - | tests/unit/test_submission_queue.py (≥85% coverage) | done |
 | 9 | `loop_unit_09_submission-event` | component | `system_guide.md §5` | `src/events/application_submitted.py` | §5 | - | tests/unit/test_submission_event.py (≥85% coverage) | done |
 | 10 | `loop_unit_10_onboarding-service` | component | `system_guide.md §4, §5` | `src/services/onboarding.py, src/state/machine.py` | §4, §5 | - | tests/unit/test_onboarding_service.py (≥85% coverage) | done |
-| 11 | `loop_unit_11_submission-worker` | component | `system_guide.md §5` | `src/workers/bank_submission.py` | §5 | - | tests/unit/test_submission_worker.py (≥85% coverage) | todo |
+| 11 | `loop_unit_11_submission-worker` | component | `system_guide.md §5` | `src/workers/bank_submission.py` | §5 | - | tests/unit/test_submission_worker.py (≥85% coverage) | done |
 | 12 | `loop_unit_12_api-gateway` | component | `system_guide.md §3` | `src/api/main.py, src/api/routes/applications.py, src/api/routes/banks.py, src/api/middleware.py` | §3 | - | tests/unit/test_api_gateway.py (≥85% coverage) | todo |
 | 13 | `loop_unit_13_mobile-ui` | component | `system_guide.md §1` | `ui/src/App.tsx, ui/src/components/ConsentScreen.tsx, ui/src/components/FaydaVerification.tsx, ui/src/components/LivenessCapture.tsx` | §1 | - | tests/unit/test_mobile_ui.py (≥85% coverage) | todo |
 | 14 | `loop_journey_01_account-opening` | journey | `journeys/journey_01_account-opening.md`, running services | test reports | §8 | `journeys/journey_01_account-opening.md` | 100% of 7 APs (tests/journey/j01) | todo |

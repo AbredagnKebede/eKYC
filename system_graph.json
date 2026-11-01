@@ -88,9 +88,9 @@
       "process_entrypoint": "python -m src.workers.bank_submission",
       "type": "worker",
       "spec_section": "\u00a75",
-      "state": "todo",
+      "state": "done",
       "loop": "loop_unit_11_submission-worker",
-      "last_verified_at": null
+      "last_verified_at": "2026-11-01T14:53:00Z"
     },
     {
       "id": "application_submitted_event",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-10-30T19:56:31.164344+00:00"
+  "last_regenerated": "2026-11-01T11:54:20.614291+00:00"
 }

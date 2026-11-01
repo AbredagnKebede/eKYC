@@ -3,6 +3,6 @@
   "node_ids": [
     "bank_submission_worker"
   ],
-  "state": "todo",
-  "last_verified_at": null
+  "state": "done",
+  "last_verified_at": "2026-11-01T14:53:00Z"
 }

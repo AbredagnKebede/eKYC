@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_11_submission-worker"
-SRC_PATHS="src/workers/bank_submission.py"
+SRC_PATHS="src"
 UNIT_TESTS="tests/unit/test_submission_worker.py"
 INTEGRATION_TESTS="tests/integration/test_submission_worker.py"
 BOUNDARIES="db,queue,external_api,worker"
@@ -34,10 +34,18 @@ printf 'verify: %s (component loop)\n' "$LOOP_NAME"
 
 # ---- 1. real boundaries must be up before integration tests run
 if [[ -n "$BOUNDARIES" && -n "$SERVICES" ]]; then
-  trap compose_down EXIT
+  trap 'compose_down; rm -f .coveragerc' EXIT
   # shellcheck disable=SC2086
   require_services $SERVICES
+else
+  trap 'rm -f .coveragerc' EXIT
 fi
+
+cat << 'EOF' > .coveragerc
+[report]
+include =
+    src/workers/bank_submission.py
+EOF
 
 # ---- 2. tests + coverage
 # shellcheck disable=SC2086
