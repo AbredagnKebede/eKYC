@@ -40,5 +40,9 @@ async def check_redis_health() -> bool:
 async def close_redis_pool() -> None:
     global _redis_pool
     if _redis_pool is not None:
-        await _redis_pool.disconnect()
-        _redis_pool = None
+        try:
+            await _redis_pool.disconnect()
+        except Exception:
+            pass
+        finally:
+            _redis_pool = None

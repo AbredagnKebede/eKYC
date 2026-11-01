@@ -17,7 +17,7 @@
 set -euo pipefail
 
 LOOP_NAME="loop_unit_12_api-gateway"
-SRC_PATHS="src/api/main.py src/api/routes/applications.py src/api/routes/banks.py src/api/middleware.py"
+SRC_PATHS="src"
 UNIT_TESTS="tests/unit/test_api_gateway.py"
 INTEGRATION_TESTS="tests/integration/test_api_gateway.py"
 BOUNDARIES="db"
@@ -30,14 +30,30 @@ source "$(cd "$SELF_DIR/../.." && pwd)/.vibearch/scripts/verify_lib.sh"
 ROOT="$(repo_root "$SELF_DIR")"
 cd "$ROOT"
 
+if [[ -f "$ROOT/.venv/bin/activate" && -z "${VIRTUAL_ENV:-}" ]]; then
+  # shellcheck source=/dev/null
+  source "$ROOT/.venv/bin/activate"
+fi
+
 printf 'verify: %s (component loop)\n' "$LOOP_NAME"
 
 # ---- 1. real boundaries must be up before integration tests run
 if [[ -n "$BOUNDARIES" && -n "$SERVICES" ]]; then
-  trap compose_down EXIT
+  trap 'compose_down; rm -f .coveragerc' EXIT
   # shellcheck disable=SC2086
   require_services $SERVICES
+else
+  trap 'rm -f .coveragerc' EXIT
 fi
+
+cat << 'EOF' > .coveragerc
+[report]
+include =
+    src/api/main.py
+    src/api/routes/applications.py
+    src/api/routes/banks.py
+    src/api/middleware.py
+EOF
 
 # ---- 2. tests + coverage
 # shellcheck disable=SC2086

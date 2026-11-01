@@ -14,9 +14,9 @@
       "label": "API Gateway & Auth",
       "type": "service",
       "spec_section": "\u00a73",
-      "state": "todo",
+      "state": "done",
       "loop": "loop_unit_12_api-gateway",
-      "last_verified_at": null
+      "last_verified_at": "2026-11-01T15:35:00Z"
     },
     {
       "id": "onboarding_service",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-11-01T11:54:20.614291+00:00"
+  "last_regenerated": "2026-11-01T12:39:55.622441+00:00"
 }
