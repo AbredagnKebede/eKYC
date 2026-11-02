@@ -229,9 +229,9 @@
       },
       "journeys/journey_02_consent-refusal.md": {
         "loop": "loop_journey_02_consent-refusal",
-        "state": "todo",
-        "last_verified_at": null,
-        "assertion_points_verified": 0
+        "state": "done",
+        "last_verified_at": "2026-11-02T15:40:53Z",
+        "assertion_points_verified": 4
       },
       "journeys/journey_03_fayda-format-lockout.md": {
         "loop": "loop_journey_03_fayda-format-lockout",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-11-02T12:01:20.486452+00:00"
+  "last_regenerated": "2026-11-02T12:42:51.338135+00:00"
 }

@@ -4,7 +4,7 @@ import hmac
 import os
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
@@ -39,7 +39,12 @@ from src.services.onboarding import (
 )
 from src.state.machine import ApplicationStateMachine
 
-from src.api.middleware import create_access_token
+from src.api.middleware import (
+    HTTPAuthorizationCredentials,
+    create_access_token,
+    decode_access_token,
+    security_bearer,
+)
 from src.api.routes.banks import get_bank_adapter_service
 
 router = APIRouter(prefix="/v1", tags=["Applications"])
@@ -256,15 +261,25 @@ async def record_consent(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
     onboarding: OnboardingService = Depends(get_onboarding_service),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
     x_device_fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
 ) -> ConsentResponse:
     """Records explicit citizen consent or processes cancellation if consent refused."""
+    if credentials:
+        decode_access_token(credentials.credentials)
+
     try:
         app = await onboarding.get_application(session, application_id)
     except ApplicationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Application {application_id} not found.",
+        )
+
+    if app.expires_at and app.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session has expired. Please start a new application.",
         )
 
     ip_addr = req.ip_address or (request.client.host if request.client else "127.0.0.1")

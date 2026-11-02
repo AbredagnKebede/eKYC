@@ -1,7 +1,7 @@
 {
   "loop_type": "journey",
   "journey_file": "journeys/journey_02_consent-refusal.md",
-  "state": "todo",
-  "assertion_points_verified": 0,
-  "last_verified_at": null
+  "state": "done",
+  "assertion_points_verified": 4,
+  "last_verified_at": "2026-11-02T15:40:53Z"
 }
