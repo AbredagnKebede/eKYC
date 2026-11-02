@@ -125,6 +125,8 @@ class IdentityService:
         transaction_id: str,
         otp: str,
         session: AsyncSession,
+        attempt: int = 1,
+        max_attempts: int = 3,
     ) -> IdentitySnapshot:
         """
         Verifies citizen OTP with Fayda eKYC, encrypts demographic payload using AES-256-GCM,
@@ -135,14 +137,23 @@ class IdentityService:
         try:
             ver_res = await self.fayda_client.verify_otp(transaction_id, otp)
         except (FaydaVerificationError, FaydaError) as exc:
-            app.status = ApplicationStatus.ID_FAILED
+            if attempt >= max_attempts:
+                app.status = ApplicationStatus.ID_FAILED
+                await self.audit_service.record_event(
+                    session=session,
+                    actor_type="CITIZEN",
+                    actor_id=app.user_ref,
+                    action="APPLICATION_ID_FAILED",
+                    application_id=app.id,
+                    payload={"transaction_id": transaction_id, "consecutive_failure_count": attempt, "error": str(exc)},
+                )
             await self.audit_service.record_event(
                 session=session,
                 actor_type="CITIZEN",
                 actor_id=app.user_ref,
-                action="FAYDA_OTP_VERIFICATION_FAILED",
+                action="OTP_VERIFICATION_FAILED",
                 application_id=app.id,
-                payload={"transaction_id": transaction_id, "error": str(exc)},
+                payload={"transaction_id": transaction_id, "consecutive_failure_count": attempt, "error": str(exc)},
             )
             await session.commit()
             raise

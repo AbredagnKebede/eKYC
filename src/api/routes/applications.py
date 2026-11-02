@@ -401,6 +401,12 @@ async def start_identity_verification(
             fin=req.fin.strip(),
             session=session,
         )
+        try:
+            tx_id = challenge["transaction_id"]
+            await redis_client.set(f"otp:session:{application_id}", tx_id, ex=180)
+            await redis_client.set(f"otp:attempts:{application_id}", 0, ex=180)
+        except Exception:
+            pass
         return IdentityStartResponse(
             transaction_id=challenge["transaction_id"],
             expires_in=challenge.get("expires_in", 300),
@@ -419,6 +425,7 @@ async def verify_identity_otp(
     session: AsyncSession = Depends(get_db_session),
     onboarding: OnboardingService = Depends(get_onboarding_service),
     identity: IdentityService = Depends(get_identity_service),
+    redis_client: Any = Depends(get_redis_dep),
 ) -> IdentityVerifyResponse:
     """Verifies citizen OTP against Fayda eKYC asserting encrypted demographic snapshot."""
     try:
@@ -435,22 +442,59 @@ async def verify_identity_otp(
             detail="Application is in terminal state ID_FAILED. Please visit your nearest bank branch.",
         )
 
+    session_key = f"otp:session:{application_id}"
+    attempts_key = f"otp:attempts:{application_id}"
+    current_attempt = 1
+    try:
+        if await redis_client.exists(attempts_key) and not await redis_client.exists(session_key):
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="OTP challenge has expired. Please request a new OTP challenge.",
+            )
+        current_attempt = await redis_client.incr(attempts_key)
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
     try:
         snapshot = await identity.verify_fayda_otp(
             application_id=application_id,
             transaction_id=req.transaction_id,
             otp=req.otp,
             session=session,
+            attempt=current_attempt,
+            max_attempts=3,
         )
+        try:
+            await redis_client.delete(session_key)
+            await redis_client.delete(attempts_key)
+        except Exception:
+            pass
         return IdentityVerifyResponse(
             application_id=application_id,
             status=ApplicationStatus.ID_VERIFIED.value,
             verified_at=snapshot.verified_at,
         )
     except FaydaVerificationError as ver_err:
+        if "410" in str(ver_err) or "expired" in str(ver_err).lower():
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="OTP challenge has expired. Please request a new OTP challenge.",
+            )
+        if current_attempt >= 3:
+            try:
+                await redis_client.delete(session_key)
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Identity verification failed. Maximum attempts reached. Please visit your chosen bank branch to complete onboarding.",
+            )
+        remaining = max(0, 3 - current_attempt)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(ver_err),
+            detail=f"Invalid OTP. {remaining} attempt{'s' if remaining != 1 else ''} remaining.",
         )
     except FaydaError as fayda_err:
         raise HTTPException(

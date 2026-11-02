@@ -241,9 +241,9 @@
       },
       "journeys/journey_04_otp-retry-fallback.md": {
         "loop": "loop_journey_04_otp-retry-fallback",
-        "state": "todo",
-        "last_verified_at": null,
-        "assertion_points_verified": 0
+        "state": "done",
+        "last_verified_at": "2026-11-02T16:05:05Z",
+        "assertion_points_verified": 5
       },
       "journeys/journey_05_liveness-spoof-rejection.md": {
         "loop": "loop_journey_05_liveness-spoof-rejection",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-11-02T12:55:09.492360+00:00"
+  "last_regenerated": "2026-11-02T13:06:51.755471+00:00"
 }

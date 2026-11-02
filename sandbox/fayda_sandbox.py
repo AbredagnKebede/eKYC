@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict
 
 PORT = int(os.getenv("PORT", "8081"))
+VERIFICATION_FAILURES: Dict[str, int] = {}
 
 
 class FaydaSandboxHandler(BaseHTTPRequestHandler):
@@ -20,6 +21,11 @@ class FaydaSandboxHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path in ("/health", "/healthz"):
             self._send_json(200, {"status": "healthy", "service": "fayda-sandbox"})
+        elif self.path in ("/fayda/v2/stats", "/stats"):
+            self._send_json(200, {
+                "status": "healthy",
+                "failures_by_transaction": VERIFICATION_FAILURES,
+            })
         else:
             self._send_json(404, {"error": "Not Found", "path": self.path})
 
@@ -69,6 +75,7 @@ class FaydaSandboxHandler(BaseHTTPRequestHandler):
                 return
 
             if otp != "123456":
+                VERIFICATION_FAILURES[tx_id] = VERIFICATION_FAILURES.get(tx_id, 0) + 1
                 self._send_json(400, {
                     "type": "https://errors.ekyc.et/INVALID_OTP",
                     "title": "Invalid OTP",

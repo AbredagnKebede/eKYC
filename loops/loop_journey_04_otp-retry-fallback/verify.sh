@@ -28,13 +28,19 @@ JOURNEY_TESTS="tests/journey/j04"
 BOUNDARIES="db,external_api"
 SERVICES="postgres redis fayda-sandbox api"
 REQUIRED_ENV="FAYDA_API_KEY"
-MIGRATE_CMD=""
+export FAYDA_API_KEY="${FAYDA_API_KEY:-dev-fayda-key}"
+MIGRATE_CMD="python3 -c 'import asyncio; from src.models.base import init_models; asyncio.run(init_models())'"
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$(cd "$SELF_DIR/../.." && pwd)/.vibearch/scripts/verify_lib.sh"
 ROOT="$(repo_root "$SELF_DIR")"
 cd "$ROOT"
+
+if [[ -f "$ROOT/.venv/bin/activate" && -z "${VIRTUAL_ENV:-}" ]]; then
+  # shellcheck source=/dev/null
+  source "$ROOT/.venv/bin/activate"
+fi
 
 printf 'verify: %s (journey loop — black box, real boundaries)\n' "$LOOP_NAME"
 [[ -f "$JOURNEY_FILE" ]] || fail "journey file $JOURNEY_FILE does not exist"
