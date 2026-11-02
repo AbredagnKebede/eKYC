@@ -1,7 +1,7 @@
 {
-  "current_loop": "loop_journey_05_liveness-spoof-rejection",
+  "current_loop": "loop_journey_06_dynamic-fields-validation",
   "loop_type": "journey",
-  "loops_done": 18,
+  "loops_done": 19,
   "loops_total": 22,
-  "last_loop_closed_at": "2026-11-02T16:18:21Z"
+  "last_loop_closed_at": "2026-11-02T16:25:14Z"
 }

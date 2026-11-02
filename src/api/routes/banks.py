@@ -62,3 +62,31 @@ async def get_partner_bank(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Partner bank '{bank_id}' not found.",
         )
+
+
+class UpdateBankSchemaRequest(BaseModel):
+    dynamic_schema: Dict[str, Any] = Field(..., description="Updated JSONSchema definition for dynamic intake")
+
+
+@router.put("/{bank_id}/schema", response_model=BankMetadataResponse)
+async def update_partner_bank_schema(
+    bank_id: str,
+    req: UpdateBankSchemaRequest,
+    service: BankAdapterService = Depends(get_bank_adapter_service),
+) -> BankMetadataResponse:
+    """Updates the active JSONSchema definition for a partner bank dynamically."""
+    try:
+        service.update_dynamic_schema(bank_id, req.dynamic_schema)
+        adapter = service.get_adapter(bank_id)
+        return BankMetadataResponse(
+            bank_id=adapter.bank_id,
+            bank_name=adapter.bank_name,
+            operational_status="OPERATIONAL",
+            supported_tiers=adapter.supported_tiers,
+            dynamic_schema=adapter.get_dynamic_schema(),
+        )
+    except BankNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Partner bank '{bank_id}' not found.",
+        )

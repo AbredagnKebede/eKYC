@@ -18,11 +18,22 @@ class AwashFinacleAdapter(BankAdapter):
         "enterprise": "AW-CA-ENT",
     }
 
-    def __init__(self, client: Optional[BankCBSClient] = None) -> None:
+    def __init__(self, client: Optional[BankCBSClient] = None, custom_schema: Optional[Dict[str, Any]] = None) -> None:
         self.client = client or BankCBSClient()
+        self._custom_schema: Optional[Dict[str, Any]] = custom_schema
+
+    def set_dynamic_schema(self, schema: Dict[str, Any]) -> None:
+        """Dynamically updates the bank's active intake schema."""
+        self._custom_schema = schema
+
+    def reset_dynamic_schema(self) -> None:
+        """Resets the dynamic schema back to the default Finacle definition."""
+        self._custom_schema = None
 
     def get_dynamic_schema(self) -> Dict[str, Any]:
         """Returns the JSONSchema for Awash Bank's dynamic intake attributes."""
+        if getattr(self, "_custom_schema", None) is not None:
+            return self._custom_schema
         return {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "AwashBankDynamicFields",

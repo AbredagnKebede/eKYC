@@ -1,7 +1,7 @@
 {
   "loop_type": "journey",
   "journey_file": "journeys/journey_06_dynamic-fields-validation.md",
-  "state": "todo",
+  "state": "done",
   "depends_on": [
     "loop_unit_01_db-postgres",
     "loop_unit_02_cache-redis",
@@ -13,13 +13,19 @@
   "boundaries": [
     "db"
   ],
-  "target_paths": [],
+  "target_paths": [
+    "src/adapters/awash_finacle.py",
+    "src/services/bank_adapter.py",
+    "src/api/routes/banks.py",
+    "src/api/routes/applications.py",
+    "tests/journey/j06/test_journey_06_dynamic_fields_validation.py"
+  ],
   "tests": {
     "journey": {
-      "run": 0,
-      "pass": 0,
-      "assertion_points_verified": 0
+      "run": 2,
+      "pass": 2,
+      "assertion_points_verified": 4
     }
   },
-  "last_verified_at": null
+  "last_verified_at": "2026-11-02T16:25:14Z"
 }

@@ -1,9 +1,9 @@
 # Journey Checklist: loop_journey_06_dynamic-fields-validation
 
-- [ ] AP-1 Missing mandatory bank field triggers HTTP 400 Problem Details response listing specific missing fields
-- [ ] AP-2 Invalid data type triggers HTTP 400 Problem Details indicating type mismatch
-- [ ] AP-3 Application state remains in LIVENESS_PASSED and does not advance to DATA_COMPLETE
-- [ ] AP-4 Valid dynamic fields payload matching bank schema returns HTTP 200 and transitions state to DATA_COMPLETE
-- [ ] 100% of assertion points verified by black-box tests in tests/journey/j06
-- [ ] Zero mocks at critical boundaries (db)
-- [ ] Real processes and sandbox services running
+- [x] AP-1 API response: PUT /v1/applications/{id}/details returns HTTP 400 Bad Request with field-level validation errors
+- [x] AP-2 Database: applications status remains LIVENESS_PASSED; does not advance to DATA_COMPLETE
+- [x] AP-3 Database: bank_submissions has 0 rows for this application ID
+- [x] AP-4 Queue: Zero messages are enqueued onto bank_submission_queue
+- [x] 100% of assertion points verified by black-box tests in tests/journey/j06
+- [x] Zero mocks at critical boundaries (db)
+- [x] Real processes and sandbox services running

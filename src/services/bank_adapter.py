@@ -180,6 +180,12 @@ class BankAdapterService:
         adapter = self.get_adapter(bank_id)
         adapter.validate_dynamic_fields(dynamic_fields)
 
+    def update_dynamic_schema(self, bank_id: str, schema: Dict[str, Any]) -> None:
+        """Dynamically updates the JSONSchema definition for a registered partner bank."""
+        adapter = self.get_adapter(bank_id)
+        if hasattr(adapter, "set_dynamic_schema"):
+            adapter.set_dynamic_schema(schema)
+
     async def submit(
         self,
         bank_id: str,
