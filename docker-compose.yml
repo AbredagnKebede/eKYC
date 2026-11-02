@@ -115,6 +115,7 @@ services:
       AES_MASTER_KEY: "01234567890123456789012345678901"
       BANK_API_KEY: dev-bank-key
       BANK_CBS_SANDBOX_URL: http://cbs-sandbox:8082/cbs/v1
+      WORKER_ID: ekyc-worker
     depends_on:
       postgres:
         condition: service_healthy

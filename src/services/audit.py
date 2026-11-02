@@ -24,7 +24,7 @@ class AuditService:
     async def get_latest_log(self, session: AsyncSession) -> Optional[AuditLog]:
         """Fetch the most recent audit entry to continue the cryptographic chain."""
         result = await session.execute(
-            select(AuditLog).order_by(AuditLog.id.desc()).limit(1)
+            select(AuditLog).order_by(AuditLog.id.desc()).limit(1).with_for_update()
         )
         return result.scalar_one_or_none()
 

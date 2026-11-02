@@ -169,6 +169,30 @@ class SubmissionQueue:
             block=block_ms,
         )
 
+        # If no new messages, check pending entries list (PEL) for unacknowledged retries
+        if not entries or not entries[0][1]:
+            entries = await self.redis.xreadgroup(
+                groupname=g_name,
+                consumername=consumer_name,
+                streams={s_name: "0"},
+                count=count,
+            )
+
+        # If still no messages, autoclaim any abandoned messages idle for > 1000ms
+        if not entries or not entries[0][1]:
+            try:
+                claim_res = await self.redis.xautoclaim(
+                    name=s_name,
+                    groupname=g_name,
+                    consumername=consumer_name,
+                    min_idle_time=1000,
+                    count=count,
+                )
+                if claim_res and len(claim_res) > 1 and claim_res[1]:
+                    entries = [(s_name, claim_res[1])]
+            except Exception:
+                pass
+
         messages: List[QueueMessage] = []
         if not entries:
             return messages

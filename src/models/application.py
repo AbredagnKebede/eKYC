@@ -191,6 +191,10 @@ class BankSubmission(Base):
         "Application", back_populates="submissions"
     )
 
+    @property
+    def last_error(self) -> Optional[str]:
+        return self.error_message
+
     def __init__(self, **kwargs: Any) -> None:
         if "id" not in kwargs:
             kwargs["id"] = uuid.uuid4()

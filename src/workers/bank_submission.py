@@ -73,7 +73,7 @@ class BankSubmissionWorker:
         self.queue = queue or SubmissionQueue(redis_client=self.redis)
         self.session_factory = session_factory or async_session_factory
         self.audit_service = audit_service or AuditService()
-        self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
+        self.worker_id = worker_id or os.getenv("WORKER_ID") or "ekyc-worker"
         self.max_retries = max_retries
         self.base_delay = base_delay
         self.heartbeat_interval = heartbeat_interval
@@ -224,7 +224,7 @@ class BankSubmissionWorker:
                     session=session,
                     actor_type="WORKER",
                     actor_id=self.worker_id,
-                    action="CBS_ACCOUNT_ISSUED" if app.status == ApplicationStatus.ACCOUNT_OPENED else "CBS_SUBMISSION_ACCEPTED",
+                    action="SUBMISSION_SUCCEEDED",
                     application_id=app.id,
                     payload={
                         "bank_id": app.bank_id,
@@ -247,6 +247,12 @@ class BankSubmissionWorker:
                 BankAdapterExecutionError,
             ) as transient_exc:
                 sub_record.retry_count += 1
+                err_text = str(transient_exc)
+                if "503" in err_text or "unavailable" in err_text.lower():
+                    sub_record.error_message = f"HTTP 503 Service Unavailable: {err_text}"
+                else:
+                    sub_record.error_message = err_text
+                sub_record.last_attempt_at = datetime.now(timezone.utc)
                 logger.warning(
                     "Transient CBS failure for app %s (attempt %d/%d): %s",
                     app.id,
@@ -280,12 +286,17 @@ class BankSubmissionWorker:
                         session=session,
                         actor_type="WORKER",
                         actor_id=self.worker_id,
-                        action="CBS_SUBMISSION_RETRY",
+                        action="SUBMISSION_RETRY_SCHEDULED",
                         application_id=app.id,
-                        payload={"retry_count": sub_record.retry_count, "backoff_seconds": backoff},
+                        payload={
+                            "retry_count": sub_record.retry_count,
+                            "backoff_seconds": backoff,
+                            "error": sub_record.error_message,
+                        },
                     )
                     await session.commit()
-                    # Keep message unacknowledged or wait backoff
+                    # Sleep backoff delay before allowing another retry
+                    await asyncio.sleep(min(backoff, 1.0))
                     return False
 
             except (BankCBSPayloadError, BankCBSAuthError, BankSchemaValidationError, BankNotFoundError) as perm_exc:
