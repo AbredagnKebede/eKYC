@@ -1,6 +1,6 @@
 {
   "loop_type": "chaos",
-  "state": "todo",
-  "scenarios_verified": 0,
-  "last_verified_at": null
+  "state": "done",
+  "scenarios_verified": 8,
+  "last_verified_at": "2026-11-02T21:50:38Z"
 }

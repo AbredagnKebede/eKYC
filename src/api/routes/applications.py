@@ -627,14 +627,6 @@ async def submit_application(
 ) -> SubmitApplicationResponse:
     """Captures citizen signature, moves to SUBMITTED_TO_BANK, and publishes queue event."""
     try:
-        app = await onboarding.get_application(session, application_id)
-    except ApplicationNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Application {application_id} not found.",
-        )
-
-    try:
         updated_app = await onboarding.submit_application(
             session=session,
             application_id=application_id,
@@ -645,6 +637,11 @@ async def submit_application(
             application_id=updated_app.id,
             status=updated_app.status.value,
             idempotency_hash=updated_app.idempotency_hash,
+        )
+    except ApplicationNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application {application_id} not found.",
         )
     except (StateGuardError, StateTransitionError) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))

@@ -1,6 +1,10 @@
 from typing import Any, Dict, List, Optional
 
-from src.clients.bank_cbs_client import BankCBSClient
+from src.clients.bank_cbs_client import (
+    BankCBSAuthError,
+    BankCBSClient,
+    BankCBSPayloadError,
+)
 from src.services.bank_adapter import BankAdapter, BankAdapterExecutionError, BankSchemaValidationError
 
 
@@ -119,6 +123,8 @@ class AwashFinacleAdapter(BankAdapter):
 
         try:
             cbs_result = await self.client.open_account(finacle_payload, idempotency_key=idem_key)
+        except (BankCBSAuthError, BankCBSPayloadError):
+            raise
         except Exception as exc:
             raise BankAdapterExecutionError(
                 f"Awash Finacle submission failed: {exc}",

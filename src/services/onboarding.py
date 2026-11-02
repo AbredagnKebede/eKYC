@@ -48,6 +48,7 @@ class OnboardingService:
         self,
         session: AsyncSession,
         application_id: uuid.UUID,
+        for_update: bool = False,
     ) -> Application:
         """Loads application along with eager-loaded relationships."""
         stmt = (
@@ -59,6 +60,8 @@ class OnboardingService:
             )
             .where(Application.id == application_id)
         )
+        if for_update:
+            stmt = stmt.with_for_update()
         result = await session.execute(stmt)
         app = result.scalar_one_or_none()
         if not app:
@@ -259,7 +262,7 @@ class OnboardingService:
         actor_id: str = "CUSTOMER",
     ) -> Application:
         """Finalizes application with signature, sets SUBMITTED_TO_BANK, and publishes queue event."""
-        app = await self.get_application(session, application_id)
+        app = await self.get_application(session, application_id, for_update=True)
         ApplicationStateMachine.validate_transition(app.status, ApplicationStatus.SUBMITTED_TO_BANK)
         ApplicationStateMachine.check_submission_guard(signature)
 
@@ -370,3 +373,46 @@ class OnboardingService:
             },
         )
         return app
+
+    async def expire_inactive_applications(self, session: AsyncSession) -> int:
+        """
+        Background cleanup task (§9.1 CH-03):
+        Identifies incomplete draft/in-progress applications past their expiration timestamp,
+        transitions status to EXPIRED, cryptographically shreds ephemeral demographic snapshots,
+        and records APPLICATION_EXPIRED audit logs.
+        """
+        now = utc_now()
+        stmt = (
+            select(Application)
+            .options(selectinload(Application.identity_snapshot))
+            .where(
+                Application.expires_at < now,
+                Application.status.notin_([
+                    ApplicationStatus.ACCOUNT_OPENED,
+                    ApplicationStatus.ACTIVATED,
+                    ApplicationStatus.BANK_REJECTED,
+                    ApplicationStatus.CANCELLED,
+                    ApplicationStatus.EXPIRED,
+                ]),
+            )
+        )
+        expired_apps = (await session.execute(stmt)).scalars().all()
+        count = 0
+        for app in expired_apps:
+            app.status = ApplicationStatus.EXPIRED
+            # Cryptographic shredding of temporary identity artifacts
+            if app.identity_snapshot:
+                app.identity_snapshot.encrypted_full_name = b"SHREDDED"
+                app.identity_snapshot.encrypted_dob = b"SHREDDED"
+            await self.audit_service.record_event(
+                session=session,
+                actor_type="SYSTEM",
+                actor_id="cleanup_daemon",
+                action="APPLICATION_EXPIRED",
+                application_id=app.id,
+                payload={"reason": "INACTIVE_TTL_EXCEEDED", "expired_at": now.isoformat()},
+            )
+            count += 1
+        await session.commit()
+        return count
+

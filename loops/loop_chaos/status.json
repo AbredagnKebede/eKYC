@@ -1,6 +1,6 @@
 {
   "loop_type": "chaos",
-  "state": "todo",
+  "state": "done",
   "depends_on": [
     "loop_journey_01_account-opening",
     "loop_journey_02_consent-refusal",
@@ -17,13 +17,15 @@
     "external_api",
     "worker"
   ],
-  "target_paths": [],
+  "target_paths": [
+    "tests/chaos"
+  ],
   "tests": {
     "chaos": {
-      "run": 0,
-      "pass": 0,
-      "scenarios_verified": 0
+      "run": 8,
+      "pass": 8,
+      "scenarios_verified": 8
     }
   },
-  "last_verified_at": null
+  "last_verified_at": "2026-11-02T21:50:38Z"
 }

@@ -26,6 +26,8 @@ CHAOS_TESTS="tests/chaos"
 BOUNDARIES="db,queue,external_api,worker"
 SERVICES="postgres redis fayda-sandbox cbs-sandbox worker api"
 REQUIRED_ENV="FAYDA_API_KEY BANK_API_KEY"
+export FAYDA_API_KEY="${FAYDA_API_KEY:-dev-fayda-key}"
+export BANK_API_KEY="${BANK_API_KEY:-dev-bank-key}"
 SCENARIOS="CH-01,CH-02,CH-03,CH-04,CH-05,CH-06,CH-07,CH-08"
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,6 +35,11 @@ SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$(cd "$SELF_DIR/../.." && pwd)/.vibearch/scripts/verify_lib.sh"
 ROOT="$(repo_root "$SELF_DIR")"
 cd "$ROOT"
+
+if [[ -f "$ROOT/.venv/bin/activate" && -z "${VIRTUAL_ENV:-}" ]]; then
+  # shellcheck source=/dev/null
+  source "$ROOT/.venv/bin/activate"
+fi
 
 printf 'verify: loop_chaos (failure modes and time-dependent behavior)\n'
 
@@ -46,6 +53,9 @@ trap compose_down EXIT
 [[ -n "$SERVICES" ]] || fail "loop_chaos declares no services — chaos needs a real running system"
 # shellcheck disable=SC2086
 require_services $SERVICES
+
+step "migrating the real database"
+python3 -c 'import asyncio; from src.models.base import init_models; asyncio.run(init_models())'
 
 # ---- every §9 scenario must be covered by a test that cites its id
 step "resilience scenario coverage"

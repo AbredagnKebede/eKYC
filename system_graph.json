@@ -272,10 +272,10 @@
     },
     "chaos": {
       "loop": "loop_chaos",
-      "state": "todo",
-      "last_verified_at": null,
-      "scenarios_verified": 0
+      "state": "done",
+      "last_verified_at": "2026-11-02T21:50:38Z",
+      "scenarios_verified": 8
     }
   },
-  "last_regenerated": "2026-11-02T14:09:55.117042+00:00"
+  "last_regenerated": "2026-11-02T21:52:33.936270+00:00"
 }

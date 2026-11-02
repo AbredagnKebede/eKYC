@@ -203,16 +203,16 @@ class BankCBSClient:
 
                 detail = error_data.get("detail", response.text)
 
-                if response.status_code == 401:
+                if response.status_code in (401, 403):
                     raise BankCBSAuthError(
-                        f"Bank CBS authentication failed: {detail}",
-                        status_code=401,
+                        f"Bank CBS authentication/authorization failed: {detail}",
+                        status_code=response.status_code,
                         detail=detail,
                     )
-                elif response.status_code == 422:
+                elif response.status_code in (400, 422):
                     raise BankCBSPayloadError(
                         f"Bank CBS payload rejected: {detail}",
-                        status_code=422,
+                        status_code=response.status_code,
                         detail=detail,
                     )
                 elif response.status_code in (502, 503, 504):
