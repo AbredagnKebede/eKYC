@@ -235,9 +235,9 @@
       },
       "journeys/journey_03_fayda-format-lockout.md": {
         "loop": "loop_journey_03_fayda-format-lockout",
-        "state": "todo",
-        "last_verified_at": null,
-        "assertion_points_verified": 0
+        "state": "done",
+        "last_verified_at": "2026-11-02T15:53:25Z",
+        "assertion_points_verified": 5
       },
       "journeys/journey_04_otp-retry-fallback.md": {
         "loop": "loop_journey_04_otp-retry-fallback",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-11-02T12:42:51.338135+00:00"
+  "last_regenerated": "2026-11-02T12:55:09.492360+00:00"
 }

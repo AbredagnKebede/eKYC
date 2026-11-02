@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import (
@@ -46,10 +47,17 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-async def init_models() -> None:
-    """Create all database tables defined in metadata."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def init_models(retries: int = 5, delay: float = 1.0) -> None:
+    """Create all database tables defined in metadata with connection retry."""
+    for attempt in range(retries):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            return
+        except Exception:
+            if attempt == retries - 1:
+                raise
+            await asyncio.sleep(delay)
 
 
 async def drop_models() -> None:

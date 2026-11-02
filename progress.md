@@ -15,3 +15,4 @@
 2026-11-01 16:06 | loop_unit_13_mobile-ui | Built multilingual onboarding client UI, consent disclosure, Fayda FIN/OTP engine, liveness session, and dynamic forms, 92.34% coverage verified
 2026-11-02 14:59 | loop_journey_01_account-opening | Verified full end-to-end self-service account opening black-box across all 7 APs against live containerized stack
 2026-11-02 15:40 | loop_journey_02_consent-refusal | Verified citizen consent refusal, immediate session cancellation, zero PII persistence, and audit log generation across all 4 APs
+2026-11-02 15:53 | loop_journey_03_fayda-format-lockout | Verified invalid Fayda FIN format 422 errors, sliding-window Redis attempt counting, 15-minute 429 lockout, and zero external API leaks across all 5 APs

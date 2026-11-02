@@ -28,13 +28,18 @@ JOURNEY_TESTS="tests/journey/j03"
 BOUNDARIES="db"
 SERVICES="postgres redis api"
 REQUIRED_ENV=""
-MIGRATE_CMD=""
+MIGRATE_CMD="python3 -c 'import asyncio; from src.models.base import init_models; asyncio.run(init_models())'"
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$(cd "$SELF_DIR/../.." && pwd)/.vibearch/scripts/verify_lib.sh"
 ROOT="$(repo_root "$SELF_DIR")"
 cd "$ROOT"
+
+if [[ -f "$ROOT/.venv/bin/activate" && -z "${VIRTUAL_ENV:-}" ]]; then
+  # shellcheck source=/dev/null
+  source "$ROOT/.venv/bin/activate"
+fi
 
 printf 'verify: %s (journey loop — black box, real boundaries)\n' "$LOOP_NAME"
 [[ -f "$JOURNEY_FILE" ]] || fail "journey file $JOURNEY_FILE does not exist"
