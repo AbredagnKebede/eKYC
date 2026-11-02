@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.audit import AuditLog
@@ -42,6 +42,9 @@ class AuditService:
         """
         payload_data = payload if payload is not None else {}
         p_hash = compute_payload_hash(payload_data)
+
+        # Serialize ledger writes across concurrent processes/transactions
+        await session.execute(text("SELECT pg_advisory_xact_lock(424242)"))
 
         latest = await self.get_latest_log(session)
         now = datetime.now(timezone.utc)

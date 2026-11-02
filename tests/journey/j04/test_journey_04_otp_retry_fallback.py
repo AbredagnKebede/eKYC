@@ -79,7 +79,7 @@ async def test_journey_04_otp_retry_fallback_e2e() -> None:
         assert consent_resp.json()["status"] == "CONSENTED"
 
         # Step 3: Trigger OTP generation with valid 12-digit FIN
-        fin = "123456789012"
+        fin = f"123456{uuid.uuid4().int % 1000000:06d}"
         start_resp = await client.post(
             f"/v1/applications/{app_id_str}/identity/start",
             json={"fin": fin},

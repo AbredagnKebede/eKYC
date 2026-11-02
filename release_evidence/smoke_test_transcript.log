@@ -1,0 +1,36 @@
+[2026-11-02T22:45:01.587602+00:00] [J-01] correlation_id: corr-smoke-j01-d670092d8cd0 — Journey J-01 (journey_01_account-opening.md): Full self-service account opening (Awash Bank, Standard Savings)
+[2026-11-02T22:45:02.042217+00:00] [J-01] correlation_id: corr-smoke-j01-d670092d8cd0 — Application created: id=51885cfc-36ad-4bb2-8ddf-c3c4ccc6ace0, status=DRAFT
+[2026-11-02T22:45:02.073558+00:00] [J-01] correlation_id: corr-smoke-j01-d670092d8cd0 — Consent recorded: status=CONSENTED
+[2026-11-02T22:45:02.112266+00:00] [J-01] correlation_id: corr-smoke-j01-d670092d8cd0 — Fayda OTP challenge dispatched: tx_id=tx_fayda_8963
+[2026-11-02T22:45:02.152002+00:00] [J-01] correlation_id: corr-smoke-j01-d670092d8cd0 — Fayda identity verified: status=ID_VERIFIED
+[2026-11-02T22:45:02.172902+00:00] [J-01] correlation_id: corr-smoke-j01-d670092d8cd0 — Passive liveness verified: status=LIVENESS_PASSED, liveness_score=0.95
+[2026-11-02T22:45:02.206774+00:00] [J-01] correlation_id: corr-smoke-j01-d670092d8cd0 — Bank dynamic schema fields saved: status=DATA_COMPLETE
+[2026-11-02T22:45:02.227429+00:00] [J-01] correlation_id: corr-smoke-j01-d670092d8cd0 — Application finalized and dispatched: status=SUBMITTED_TO_BANK
+[2026-11-02T22:45:02.738980+00:00] [J-01] correlation_id: corr-smoke-j01-d670092d8cd0 — Account opened successfully: account_number=1000278254739, status=ACCOUNT_OPENED
+[2026-11-02T22:45:02.739060+00:00] [J-02] correlation_id: corr-smoke-j02-60f3db3b959f — Journey J-02 (journey_02_consent-refusal.md): Citizen consent refusal and clean session cancellation
+[2026-11-02T22:45:02.758169+00:00] [J-02] correlation_id: corr-smoke-j02-60f3db3b959f — Draft application initialized: id=27eca5d5-9762-4c34-a6a7-696cbc613324
+[2026-11-02T22:45:02.778618+00:00] [J-02] correlation_id: corr-smoke-j02-60f3db3b959f — Consent refused by citizen: application transitioned to CANCELLED cleanly
+[2026-11-02T22:45:02.788768+00:00] [J-02] correlation_id: corr-smoke-j02-60f3db3b959f — Identity verification attempt on cancelled application successfully rejected with HTTP 403 Forbidden
+[2026-11-02T22:45:02.788819+00:00] [J-03] correlation_id: corr-smoke-j03-d0d03e878d9f — Journey J-03 (journey_03_fayda-format-lockout.md): Fayda format validation and lockout protection
+[2026-11-02T22:45:02.838124+00:00] [J-03] correlation_id: corr-smoke-j03-d0d03e878d9f — Malformed 5-digit FIN format rejected with HTTP 422 Unprocessable Entity
+[2026-11-02T22:45:02.896903+00:00] [J-03] correlation_id: corr-smoke-j03-d0d03e878d9f — Invalid OTP attempt 1 handled: remaining=2
+[2026-11-02T22:45:02.925621+00:00] [J-03] correlation_id: corr-smoke-j03-d0d03e878d9f — Invalid OTP attempt 2 handled: remaining=1
+[2026-11-02T22:45:02.959151+00:00] [J-03] correlation_id: corr-smoke-j03-d0d03e878d9f — Invalid OTP attempt 3 handled: remaining=0
+[2026-11-02T22:45:02.969593+00:00] [J-03] correlation_id: corr-smoke-j03-d0d03e878d9f — Session lockout successfully enforced with HTTP 409 Conflict (ID_FAILED)
+[2026-11-02T22:45:02.969638+00:00] [J-04] correlation_id: corr-smoke-j04-7885c9871c1a — Journey J-04 (journey_04_otp-retry-fallback.md): OTP verification retry recovery path
+[2026-11-02T22:45:03.064662+00:00] [J-04] correlation_id: corr-smoke-j04-7885c9871c1a — First OTP entry mistyped, returned HTTP 400 with remaining attempts counter
+[2026-11-02T22:45:03.104255+00:00] [J-04] correlation_id: corr-smoke-j04-7885c9871c1a — Second OTP entry succeeded: citizen verified, status=ID_VERIFIED
+[2026-11-02T22:45:03.104329+00:00] [J-05] correlation_id: corr-smoke-j05-0265f6e909a9 — Journey J-05 (journey_05_liveness-spoof-rejection.md): Presentation attack and spoof detection rejection
+[2026-11-02T22:45:03.222323+00:00] [J-05] correlation_id: corr-smoke-j05-0265f6e909a9 — Spoof attack detected and rejected with HTTP 422 Unprocessable Entity
+[2026-11-02T22:45:03.222374+00:00] [J-06] correlation_id: corr-smoke-j06-44b840077127 — Journey J-06 (journey_06_dynamic-fields-validation.md): Commercial partner bank dynamic schema validation
+[2026-11-02T22:45:03.357648+00:00] [J-06] correlation_id: corr-smoke-j06-44b840077127 — Dynamic payload missing required fields rejected with HTTP 400 schema validation
+[2026-11-02T22:45:03.381527+00:00] [J-06] correlation_id: corr-smoke-j06-44b840077127 — Complete dynamic fields successfully validated against partner bank schema
+[2026-11-02T22:45:03.381607+00:00] [J-07] correlation_id: corr-smoke-j07-83da7e08674a — Journey J-07 (journey_07_bank-offline-retry.md): Partner CBS downtime handling, exponential backoff, and recovery
+[2026-11-02T22:45:03.542073+00:00] [J-07] correlation_id: corr-smoke-j07-83da7e08674a — CBS sandbox set to simulated maintenance mode (HTTP 503)
+[2026-11-02T22:45:03.562962+00:00] [J-07] correlation_id: corr-smoke-j07-83da7e08674a — Application submitted to queue while bank CBS is offline: status=SUBMITTED_TO_BANK
+[2026-11-02T22:45:05.593006+00:00] [J-07] correlation_id: corr-smoke-j07-83da7e08674a — CBS sandbox restored to normal operational mode (HTTP 200)
+[2026-11-02T22:45:06.105373+00:00] [J-07] correlation_id: corr-smoke-j07-83da7e08674a — Worker consumed retry, successfully opened account in CBS upon recovery
+[2026-11-02T22:45:06.105430+00:00] [J-08] correlation_id: corr-smoke-j08-ca7378584aa4 — Journey J-08 (journey_08_async-bank-callback.md): Commercial bank signed webhook callback and async account opening
+[2026-11-02T22:45:06.325880+00:00] [J-08] correlation_id: corr-smoke-j08-ca7378584aa4 — Application submitted to bank CBS; placed in BANK_ACCEPTED pending asynchronous core batch clearance
+[2026-11-02T22:45:06.360774+00:00] [J-08] correlation_id: corr-smoke-j08-ca7378584aa4 — Signed bank webhook processed and verified: account_number=1000307929310
+[2026-11-02T22:45:06.379718+00:00] [J-08] correlation_id: corr-smoke-j08-ca7378584aa4 — Customer poll confirmed status=ACCOUNT_OPENED with issued bank account number
