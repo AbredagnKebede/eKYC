@@ -223,9 +223,9 @@
     "journeys": {
       "journeys/journey_01_account-opening.md": {
         "loop": "loop_journey_01_account-opening",
-        "state": "todo",
-        "last_verified_at": null,
-        "assertion_points_verified": 0
+        "state": "done",
+        "last_verified_at": "2026-11-02T14:59:00Z",
+        "assertion_points_verified": 7
       },
       "journeys/journey_02_consent-refusal.md": {
         "loop": "loop_journey_02_consent-refusal",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-11-01T13:07:50.820438+00:00"
+  "last_regenerated": "2026-11-02T12:01:20.486452+00:00"
 }

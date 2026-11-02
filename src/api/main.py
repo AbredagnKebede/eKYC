@@ -36,6 +36,12 @@ logger = logging.getLogger("ekyc.api")
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager initializing resources on startup and cleaning up on shutdown."""
     logger.info("Starting eKYC API Gateway...")
+    try:
+        from src.models.base import init_models
+        await init_models()
+        logger.info("Database tables initialized.")
+    except Exception as exc:
+        logger.warning("Database initialization deferred: %s", exc)
     yield
     logger.info("Shutting down eKYC API Gateway...")
     redis_client = get_redis_client()

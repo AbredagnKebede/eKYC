@@ -1,7 +1,7 @@
 {
   "loop_type": "journey",
   "journey_file": "journeys/journey_01_account-opening.md",
-  "state": "todo",
+  "state": "done",
   "depends_on": [
     "loop_unit_01_db-postgres",
     "loop_unit_02_cache-redis",
@@ -26,10 +26,10 @@
   "target_paths": [],
   "tests": {
     "journey": {
-      "run": 0,
-      "pass": 0,
-      "assertion_points_verified": 0
+      "run": 1,
+      "pass": 1,
+      "assertion_points_verified": 7
     }
   },
-  "last_verified_at": null
+  "last_verified_at": "2026-11-02T14:59:00Z"
 }

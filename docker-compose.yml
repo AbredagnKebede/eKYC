@@ -76,6 +76,8 @@ services:
     container_name: ekyc-api
     ports:
       - "8005:8000"
+    volumes:
+      - ./src:/app/src
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ekyc_db
       REDIS_URL: redis://redis:6379/0
@@ -104,6 +106,8 @@ services:
       dockerfile: Dockerfile.worker
     container_name: ekyc-worker
     command: python -m src.workers.bank_submission
+    volumes:
+      - ./src:/app/src
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ekyc_db
       REDIS_URL: redis://redis:6379/0

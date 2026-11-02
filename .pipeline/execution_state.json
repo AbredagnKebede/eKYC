@@ -1,7 +1,7 @@
 {
-  "current_loop": "loop_unit_13_mobile-ui",
-  "loop_type": "component",
-  "loops_done": 13,
+  "current_loop": "loop_journey_01_account-opening",
+  "loop_type": "journey",
+  "loops_done": 14,
   "loops_total": 22,
-  "last_loop_closed_at": "2026-11-01T16:06:00Z"
+  "last_loop_closed_at": "2026-11-02T14:59:00Z"
 }

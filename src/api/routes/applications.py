@@ -197,6 +197,7 @@ async def create_application(
         bank_id=req.bank_id,
         tier=req.tier,
     )
+    await session.commit()
 
     token = create_access_token(
         user_ref=req.user_ref,

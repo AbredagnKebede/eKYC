@@ -1,0 +1,14 @@
+.venv
+__pycache__
+.pytest_cache
+.coverage
+.git
+.agents
+.vibearch
+VibeArch
+tests
+ui
+progress.md
+Lessons.md
+roadmap.md
+system_guide.md
