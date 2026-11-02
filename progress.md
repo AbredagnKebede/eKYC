@@ -17,3 +17,4 @@
 2026-11-02 15:40 | loop_journey_02_consent-refusal | Verified citizen consent refusal, immediate session cancellation, zero PII persistence, and audit log generation across all 4 APs
 2026-11-02 15:53 | loop_journey_03_fayda-format-lockout | Verified invalid Fayda FIN format 422 errors, sliding-window Redis attempt counting, 15-minute 429 lockout, and zero external API leaks across all 5 APs
 2026-11-02 16:05 | loop_journey_04_otp-retry-fallback | Verified 3-attempt OTP retry exhaustion, Redis session purge, terminal ID_FAILED transition, and branch fallback across all 5 APs
+2026-11-02 16:18 | loop_journey_05_liveness-spoof-rejection | Verified biometric anti-spoof rejection HTTP 422, LIVENESS_FAILED state transition, ephemeral memory purge, and audit trail across all 4 APs

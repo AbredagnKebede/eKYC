@@ -1,7 +1,7 @@
 {
-  "current_loop": "loop_journey_01_account-opening",
+  "current_loop": "loop_journey_05_liveness-spoof-rejection",
   "loop_type": "journey",
-  "loops_done": 14,
+  "loops_done": 18,
   "loops_total": 22,
-  "last_loop_closed_at": "2026-11-02T14:59:00Z"
+  "last_loop_closed_at": "2026-11-02T16:18:21Z"
 }

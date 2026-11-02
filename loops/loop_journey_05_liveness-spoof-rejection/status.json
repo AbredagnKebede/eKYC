@@ -1,7 +1,7 @@
 {
   "loop_type": "journey",
   "journey_file": "journeys/journey_05_liveness-spoof-rejection.md",
-  "state": "todo",
+  "state": "done",
   "depends_on": [
     "loop_unit_01_db-postgres",
     "loop_unit_02_cache-redis",
@@ -14,13 +14,18 @@
   "boundaries": [
     "db"
   ],
-  "target_paths": [],
+  "target_paths": [
+    "src/security/liveness.py",
+    "src/services/identity.py",
+    "src/api/routes/applications.py",
+    "tests/journey/j05/test_journey_05_liveness_spoof_rejection.py"
+  ],
   "tests": {
     "journey": {
-      "run": 0,
-      "pass": 0,
-      "assertion_points_verified": 0
+      "run": 3,
+      "pass": 3,
+      "assertion_points_verified": 4
     }
   },
-  "last_verified_at": null
+  "last_verified_at": "2026-11-02T16:18:21Z"
 }

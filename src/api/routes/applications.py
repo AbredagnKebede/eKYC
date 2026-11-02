@@ -512,7 +512,7 @@ async def verify_liveness(
 ) -> LivenessResponse:
     """Evaluates biometric camera frames against anti-spoofing engine and face match."""
     try:
-        selfie_bytes = base64.b64decode(req.selfie_base64)
+        selfie_bytes = base64.b64decode(req.selfie_base64, validate=True)
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -522,7 +522,7 @@ async def verify_liveness(
     ref_photo_bytes = None
     if req.fayda_photo_base64:
         try:
-            ref_photo_bytes = base64.b64decode(req.fayda_photo_base64)
+            ref_photo_bytes = base64.b64decode(req.fayda_photo_base64, validate=True)
         except Exception:
             pass
 

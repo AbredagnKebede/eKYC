@@ -247,9 +247,9 @@
       },
       "journeys/journey_05_liveness-spoof-rejection.md": {
         "loop": "loop_journey_05_liveness-spoof-rejection",
-        "state": "todo",
-        "last_verified_at": null,
-        "assertion_points_verified": 0
+        "state": "done",
+        "last_verified_at": "2026-11-02T16:18:21Z",
+        "assertion_points_verified": 4
       },
       "journeys/journey_06_dynamic-fields-validation.md": {
         "loop": "loop_journey_06_dynamic-fields-validation",
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-11-02T13:06:51.755471+00:00"
+  "last_regenerated": "2026-11-02T13:19:28.924523+00:00"
 }

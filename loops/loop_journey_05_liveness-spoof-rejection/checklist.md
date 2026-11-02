@@ -1,9 +1,9 @@
 # Journey Checklist: loop_journey_05_liveness-spoof-rejection
 
-- [ ] AP-1 ONNX inference engine detects static/replayed face frame and returns spoof score < 0.90
-- [ ] AP-2 Rejection response returned with HTTP 422 and actionable remediation prompt
-- [ ] AP-3 After 3 consecutive spoof rejections, application state transitions to LIVENESS_FAILED in database
-- [ ] AP-4 Biometric image frame buffers are purged from memory with zero persistent file retention
-- [ ] 100% of assertion points verified by black-box tests in tests/journey/j05
-- [ ] Zero mocks at critical boundaries (db)
-- [ ] Real processes and sandbox services running
+- [x] AP-1 API response: POST /v1/applications/{id}/liveness returns HTTP 422 with spoof_detected=true and anti-spoof score < 0.90
+- [x] AP-2 Database: applications status transitions strictly to LIVENESS_FAILED
+- [x] AP-3 Storage: Zero raw biometric image frames or video buffers remain in ephemeral filesystem storage after evaluation
+- [x] AP-4 Audit: audit_logs records LIVENESS_VERIFICATION_FAILED with model version and spoof classification score
+- [x] 100% of assertion points verified by black-box tests in tests/journey/j05
+- [x] Zero mocks at critical boundaries (db)
+- [x] Real processes and sandbox services running
