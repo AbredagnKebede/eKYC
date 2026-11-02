@@ -265,9 +265,9 @@
       },
       "journeys/journey_08_async-bank-callback.md": {
         "loop": "loop_journey_08_async-bank-callback",
-        "state": "todo",
-        "last_verified_at": null,
-        "assertion_points_verified": 0
+        "state": "done",
+        "last_verified_at": "2026-11-02T17:08:00Z",
+        "assertion_points_verified": 5
       }
     },
     "chaos": {
@@ -277,5 +277,5 @@
       "scenarios_verified": 0
     }
   },
-  "last_regenerated": "2026-11-02T13:51:51.364444+00:00"
+  "last_regenerated": "2026-11-02T14:09:55.117042+00:00"
 }

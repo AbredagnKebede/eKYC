@@ -178,6 +178,9 @@ class BankSubmission(Base):
     account_number: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True, index=True
     )
+    bank_status: Mapped[Optional[str]] = mapped_column(
+        String(32), default="pending", nullable=True, index=True
+    )
     sent_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
@@ -198,6 +201,8 @@ class BankSubmission(Base):
     def __init__(self, **kwargs: Any) -> None:
         if "id" not in kwargs:
             kwargs["id"] = uuid.uuid4()
+        if "bank_status" not in kwargs:
+            kwargs["bank_status"] = "pending"
         if "retry_count" not in kwargs:
             kwargs["retry_count"] = 0
         if "sent_at" not in kwargs:

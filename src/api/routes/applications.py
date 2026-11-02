@@ -94,6 +94,7 @@ class ApplicationDetailResponse(BaseModel):
     expires_at: datetime
     account_number: Optional[str] = None
     bank_reference: Optional[str] = None
+    activation_instructions: Optional[str] = None
 
 
 class ConsentRequest(BaseModel):
@@ -240,6 +241,10 @@ async def get_application_details(
         account_no = sub.account_number
         bank_ref = sub.bank_reference
 
+    instructions = None
+    if app.status == ApplicationStatus.ACCOUNT_OPENED:
+        instructions = f"Welcome to your new account at {app.bank_id}! Visit any branch with your Fayda ID or activate mobile banking using your registered phone number."
+
     return ApplicationDetailResponse(
         application_id=app.id,
         user_ref=app.user_ref,
@@ -251,6 +256,7 @@ async def get_application_details(
         expires_at=app.expires_at,
         account_number=account_no,
         bank_reference=bank_ref,
+        activation_instructions=instructions,
     )
 
 

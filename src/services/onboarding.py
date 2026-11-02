@@ -329,12 +329,31 @@ class OnboardingService:
 
         app.status = new_status
 
+        target_sub = None
         for sub in app.submissions:
             if sub.bank_id == app.bank_id:
-                if account_number:
-                    sub.account_number = account_number
-                if bank_reference:
-                    sub.bank_reference = bank_reference
+                target_sub = sub
+                break
+
+        if target_sub is None:
+            target_sub = BankSubmission(
+                application_id=app.id,
+                bank_id=app.bank_id,
+                account_number=account_number,
+                bank_reference=bank_reference,
+                bank_status="opened" if new_status == ApplicationStatus.ACCOUNT_OPENED else "pending",
+            )
+            session.add(target_sub)
+            app.submissions.append(target_sub)
+        else:
+            if account_number:
+                target_sub.account_number = account_number
+            if bank_reference:
+                target_sub.bank_reference = bank_reference
+            if new_status == ApplicationStatus.ACCOUNT_OPENED:
+                target_sub.bank_status = "opened"
+            elif new_status == ApplicationStatus.BANK_REJECTED:
+                target_sub.bank_status = "rejected"
 
         await session.flush()
 

@@ -20,3 +20,4 @@
 2026-11-02 16:18 | loop_journey_05_liveness-spoof-rejection | Verified biometric anti-spoof rejection HTTP 422, LIVENESS_FAILED state transition, ephemeral memory purge, and audit trail across all 4 APs
 2026-11-02 16:25 | loop_journey_06_dynamic-fields-validation | Verified bank dynamic fields validation failure HTTP 400, LIVENESS_PASSED preservation, zero bank submissions or queue entries across all 4 APs
 2026-11-02 16:51 | loop_journey_07_bank-offline-retry | Verified transient CBS 503 retry, exponential backoff, DLQ routing on retry exhaustion, crash restart recovery, and audit integrity across all 5 APs
+2026-11-02 17:08 | loop_journey_08_async-bank-callback | Verified HMAC webhook verification, ACCOUNT_OPENED status transition, bank submission account persistence, audit hashing, and idempotent re-delivery across all 5 APs
