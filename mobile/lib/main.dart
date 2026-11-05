@@ -87,11 +87,144 @@ class _OnboardingShellState extends State<OnboardingShell> {
   final occupationCtrl = TextEditingController(text: 'Software Engineer');
   String sourceOfFunds = 'Salary';
   final branchCtrl = TextEditingController();
+  final Map<String, TextEditingController> extraCtrls = {};
   String? accountNumber;
   String? statusText;
   String? activationMsg;
 
   late final SignatureController sigCtrl;
+
+  static const _coreFieldKeys = {
+    'monthly_income_etb',
+    'occupation',
+    'source_of_funds',
+    'branch_code',
+    'requires_review',
+  };
+
+  String _statusLabel(String? status) {
+    if (status == null || status.isEmpty) return '';
+    final key = 'status.$status';
+    final translated = s.t(key);
+    return translated == key ? status.replaceAll('_', ' ').toLowerCase() : translated;
+  }
+
+  String _fieldLabel(String key) {
+    return key
+        .split('_')
+        .where((p) => p.isNotEmpty)
+        .map((p) => '${p[0].toUpperCase()}${p.substring(1)}')
+        .join(' ');
+  }
+
+  String _friendlyError(Object e) {
+    final raw = e.toString();
+    if (e is EkycApiException) {
+      var detail = e.message;
+      if (detail.contains('Missing required dynamic field')) {
+        final m = RegExp(r'Missing required dynamic field\(s\):\s*(.+)').firstMatch(detail);
+        if (m != null) {
+          final fields = m.group(1)!.split(',').map((f) => _fieldLabel(f.trim())).join(', ');
+          return '${s.t('error.missing_fields')} ($fields)';
+        }
+        return s.t('error.missing_fields');
+      }
+      if (detail.startsWith('{') || detail.contains("'detail':")) {
+        final m = RegExp(r"'detail':\s*'([^']+)'").firstMatch(detail);
+        if (m != null) detail = m.group(1)!;
+      }
+      if (e.statusCode == 429 || e.statusCode == 410) return s.t('otp.lockout');
+      if (e.statusCode >= 500) return s.t('error.generic');
+      return detail.length > 160 ? s.t('error.generic') : detail;
+    }
+    if (raw.contains('SocketException') ||
+        raw.contains('ClientException') ||
+        raw.contains('Connection reset') ||
+        raw.contains('Failed host lookup') ||
+        raw.contains('TimeoutException')) {
+      return s.t('error.network');
+    }
+    if (raw.length > 160) return s.t('error.generic');
+    return raw.replaceFirst('Exception: ', '');
+  }
+
+  void _syncExtraControllers(Map<String, dynamic>? schema) {
+    final props = (schema?['properties'] as Map?)?.keys.map((e) => e.toString()).toSet() ?? <String>{};
+    for (final key in props) {
+      if (_coreFieldKeys.contains(key)) continue;
+      extraCtrls.putIfAbsent(key, TextEditingController.new);
+    }
+  }
+
+  Future<void> _loadSchemaForCurrent() async {
+    if (bankId == null) return;
+    try {
+      final list = await api.listBanks(tier: selectedTier);
+      final match = list.cast<Map>().where((b) => b['bank_id']?.toString() == bankId).toList();
+      if (match.isEmpty) return;
+      final bank = Map<String, dynamic>.from(match.first);
+      bankName = bank['bank_name']?.toString() ?? bankName;
+      final byTier = bank['schemas_by_tier'];
+      if (byTier is Map && byTier[selectedTier] is Map) {
+        selectedBankSchema = Map<String, dynamic>.from(byTier[selectedTier] as Map);
+      } else if (bank['dynamic_schema'] is Map) {
+        selectedBankSchema = Map<String, dynamic>.from(bank['dynamic_schema'] as Map);
+      }
+      _syncExtraControllers(selectedBankSchema);
+    } catch (_) {
+      // keep existing schema if network fails mid-flow
+    }
+  }
+
+  bool get _showBack {
+    if (showPassport) return true;
+    return step != StepId.welcome;
+  }
+
+  void _goBack() {
+    setState(() {
+      error = null;
+      if (showPassport) {
+        showPassport = false;
+        step = StepId.welcome;
+        return;
+      }
+      switch (step) {
+        case StepId.bank:
+          if (myApps.isNotEmpty) {
+            showPassport = true;
+          } else {
+            step = StepId.welcome;
+          }
+          break;
+        case StepId.consent:
+          step = StepId.bank;
+          break;
+        case StepId.fayda:
+          step = StepId.consent;
+          break;
+        case StepId.otp:
+          step = StepId.fayda;
+          break;
+        case StepId.liveness:
+          step = StepId.otp;
+          break;
+        case StepId.fields:
+          step = StepId.liveness;
+          break;
+        case StepId.sign:
+          step = StepId.fields;
+          break;
+        case StepId.status:
+        case StepId.done:
+          showPassport = myApps.isNotEmpty;
+          if (!showPassport) step = StepId.welcome;
+          break;
+        case StepId.welcome:
+          break;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -174,7 +307,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
     await _run(() async {
       appId = row['application_id']?.toString();
       bankId = row['bank_id']?.toString();
-      bankName = bankId;
+      bankName = row['bank_name']?.toString() ?? bankId;
       selectedTier = row['tier']?.toString() ?? 'standard';
       accountNumber = row['account_number']?.toString();
       statusText = row['status']?.toString();
@@ -182,13 +315,13 @@ class _OnboardingShellState extends State<OnboardingShell> {
       if (resume == 'expired') {
         throw Exception(s.t('error.expired'));
       }
+      await _loadSchemaForCurrent();
       showPassport = false;
       step = _stepFromResume(resume);
       if (step == StepId.status) {
         await _pollStatus();
       }
       if (step == StepId.done && statusText == 'ACCOUNT_OPENED' && accountNumber != null) {
-        // stay on done-like status activate path
         step = StepId.status;
       }
     });
@@ -211,13 +344,8 @@ class _OnboardingShellState extends State<OnboardingShell> {
     try {
       await action();
       await _persistSession();
-    } on EkycApiException catch (e) {
-      final msg = (e.statusCode == 429 || e.statusCode == 410)
-          ? s.t('otp.lockout')
-          : e.message;
-      setState(() => error = msg);
     } catch (e) {
-      setState(() => error = e.toString());
+      setState(() => error = _friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -249,6 +377,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
             ? Map<String, dynamic>.from(bank['dynamic_schema'] as Map)
             : null;
       }
+      _syncExtraControllers(selectedBankSchema);
       setState(() => step = StepId.consent);
       // Tier picked on next micro-step via dialog before create
       final tier = await _pickTier();
@@ -343,12 +472,14 @@ class _OnboardingShellState extends State<OnboardingShell> {
       final bytes = await shot.readAsBytes();
       final res = await api.liveness(appId!, base64Encode(bytes));
       livenessScore = (res['liveness_score'] as num?)?.toDouble();
+      await _loadSchemaForCurrent();
       setState(() => step = StepId.fields);
     });
   }
 
   Future<void> _saveFields() async {
     await _run(() async {
+      await _loadSchemaForCurrent();
       final fields = <String, dynamic>{
         'monthly_income_etb': double.parse(incomeCtrl.text.trim()),
         'occupation': occupationCtrl.text.trim(),
@@ -356,6 +487,29 @@ class _OnboardingShellState extends State<OnboardingShell> {
       };
       if (branchCtrl.text.trim().isNotEmpty) {
         fields['branch_code'] = branchCtrl.text.trim();
+      }
+      final required = ((selectedBankSchema?['required'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toSet();
+      for (final entry in extraCtrls.entries) {
+        final raw = entry.value.text.trim();
+        if (raw.isEmpty) {
+          if (required.contains(entry.key)) {
+            throw Exception('${s.t('error.missing_fields')} (${_fieldLabel(entry.key)})');
+          }
+          continue;
+        }
+        final prop = (selectedBankSchema?['properties'] as Map?)?[entry.key];
+        if (prop is Map && prop['type'] == 'number') {
+          fields[entry.key] = double.parse(raw);
+        } else if (prop is Map && prop['type'] == 'boolean') {
+          fields[entry.key] = raw.toLowerCase() == 'true' || raw == '1';
+        } else {
+          fields[entry.key] = raw;
+        }
+      }
+      if (selectedTier == 'enterprise') {
+        fields['requires_review'] = true;
       }
       await api.saveDetails(appId!, fields);
       setState(() => step = StepId.sign);
@@ -437,6 +591,9 @@ class _OnboardingShellState extends State<OnboardingShell> {
     incomeCtrl.dispose();
     occupationCtrl.dispose();
     branchCtrl.dispose();
+    for (final c in extraCtrls.values) {
+      c.dispose();
+    }
     sigCtrl.dispose();
     super.dispose();
   }
@@ -449,16 +606,26 @@ class _OnboardingShellState extends State<OnboardingShell> {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 16,
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset('assets/icon/app_icon.png', width: 28, height: 28, fit: BoxFit.cover),
-            ),
-            const SizedBox(width: 10),
-            Text(s.t('brand')),
-          ],
+        titleSpacing: _showBack ? 0 : 16,
+        leading: _showBack
+            ? IconButton(
+                tooltip: s.t('nav.back'),
+                onPressed: busy ? null : _goBack,
+                icon: const Icon(Icons.arrow_back_rounded),
+              )
+            : null,
+        title: GestureDetector(
+          onLongPress: () => _openSettings(context),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset('assets/icon/app_icon.png', width: 28, height: 28, fit: BoxFit.cover),
+              ),
+              const SizedBox(width: 10),
+              Flexible(child: Text(s.t('brand'), overflow: TextOverflow.ellipsis)),
+            ],
+          ),
         ),
         actions: [
           PopupMenuButton<String>(
@@ -475,20 +642,20 @@ class _OnboardingShellState extends State<OnboardingShell> {
             ],
             icon: const Icon(Icons.translate_rounded, size: 22),
           ),
-          if (myApps.isNotEmpty)
+          if (myApps.isNotEmpty && !showPassport)
             IconButton(
-              tooltip: 'Passport',
-              onPressed: () async {
-                await _refreshPassport();
-                setState(() => showPassport = true);
-              },
+              tooltip: s.t('nav.passport'),
+              onPressed: busy
+                  ? null
+                  : () async {
+                      await _refreshPassport();
+                      setState(() {
+                        error = null;
+                        showPassport = true;
+                      });
+                    },
               icon: const Icon(Icons.account_balance_wallet_outlined, size: 22),
             ),
-          IconButton(
-            tooltip: 'API settings',
-            onPressed: () => _openSettings(context),
-            icon: const Icon(Icons.tune_rounded, size: 22),
-          ),
         ],
         bottom: showPassport
             ? null
@@ -558,6 +725,9 @@ class _OnboardingShellState extends State<OnboardingShell> {
                         : expired
                             ? s.t('passport.expired')
                             : s.t('passport.processing');
+                    final name = row['bank_name']?.toString().isNotEmpty == true
+                        ? row['bank_name'].toString()
+                        : (row['bank_id']?.toString() ?? '');
                     return Material(
                       color: EkycColors.surface,
                       borderRadius: BorderRadius.circular(14),
@@ -576,13 +746,10 @@ class _OnboardingShellState extends State<OnboardingShell> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      row['bank_id']?.toString() ?? '',
-                                      style: const TextStyle(fontWeight: FontWeight.w700),
-                                    ),
+                                    Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '$label · ${row['tier']} · $status',
+                                      '$label · ${row['tier']} · ${_statusLabel(status)}',
                                       style: const TextStyle(color: EkycColors.muted, fontSize: 12.5),
                                     ),
                                     if (row['account_number'] != null)
@@ -612,6 +779,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
               ? null
               : () {
                   setState(() {
+                    error = null;
                     showPassport = false;
                     step = StepId.welcome;
                   });
@@ -656,11 +824,14 @@ class _OnboardingShellState extends State<OnboardingShell> {
       case StepId.fields:
         return _Fields(
           bankName: bankName ?? 'Bank',
+          schema: selectedBankSchema,
           incomeCtrl: incomeCtrl,
           occupationCtrl: occupationCtrl,
           branchCtrl: branchCtrl,
+          extraCtrls: extraCtrls,
           sourceOfFunds: sourceOfFunds,
           onSource: (v) => setState(() => sourceOfFunds = v),
+          fieldLabel: _fieldLabel,
           onContinue: busy ? null : _saveFields,
         );
       case StepId.sign:
@@ -668,8 +839,10 @@ class _OnboardingShellState extends State<OnboardingShell> {
       case StepId.status:
         return _Status(
           status: statusText,
+          statusLabel: _statusLabel(statusText),
           account: accountNumber,
           bankName: bankName,
+          waitingLabel: s.t('status.waiting'),
           onActivate: (accountNumber != null && !busy) ? _activate : null,
         );
       case StepId.done:
@@ -715,11 +888,10 @@ class _OnboardingShellState extends State<OnboardingShell> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('API endpoint', style: Theme.of(ctx).textTheme.titleLarge),
+              Text('Advanced', style: Theme.of(ctx).textTheme.titleLarge),
               const SizedBox(height: 8),
               const Text(
-                'Production: https://ekyc-api-jj0j.onrender.com\n'
-                'Local: http://127.0.0.1:8005 (with adb reverse)',
+                'Support / developer use only. Change this if a tester asks you to.',
                 style: TextStyle(color: EkycColors.muted, height: 1.45),
               ),
               const SizedBox(height: 12),
@@ -1140,52 +1312,96 @@ class _Liveness extends StatelessWidget {
 class _Fields extends StatelessWidget {
   const _Fields({
     required this.bankName,
+    required this.schema,
     required this.incomeCtrl,
     required this.occupationCtrl,
     required this.branchCtrl,
+    required this.extraCtrls,
     required this.sourceOfFunds,
     required this.onSource,
+    required this.fieldLabel,
     required this.onContinue,
   });
   final String bankName;
+  final Map<String, dynamic>? schema;
   final TextEditingController incomeCtrl;
   final TextEditingController occupationCtrl;
   final TextEditingController branchCtrl;
+  final Map<String, TextEditingController> extraCtrls;
   final String sourceOfFunds;
   final ValueChanged<String> onSource;
+  final String Function(String) fieldLabel;
   final VoidCallback? onContinue;
 
   @override
   Widget build(BuildContext context) {
+    final props = (schema?['properties'] as Map?) ?? {};
+    final required = ((schema?['required'] as List?) ?? const []).map((e) => e.toString()).toSet();
+    final fundEnum = ((props['source_of_funds'] as Map?)?['enum'] as List?)?.map((e) => e.toString()).toList() ??
+        const ['Salary', 'Business', 'Remittance', 'Savings', 'Agriculture'];
+    final fundValue = fundEnum.contains(sourceOfFunds) ? sourceOfFunds : fundEnum.first;
+    final extraKeys = props.keys.map((e) => e.toString()).where((k) {
+      return !{
+        'monthly_income_etb',
+        'occupation',
+        'source_of_funds',
+        'branch_code',
+        'requires_review',
+      }.contains(k);
+    }).toList();
+
     return ListView(
       children: [
         Text('$bankName details', style: Theme.of(context).textTheme.headlineMedium),
+        if (schema?['x-tier-copy'] != null) ...[
+          const SizedBox(height: 6),
+          Text(schema!['x-tier-copy'].toString(), style: Theme.of(context).textTheme.bodyMedium),
+        ],
         const SizedBox(height: 16),
         TextField(
           controller: incomeCtrl,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Monthly income (ETB)'),
+          decoration: InputDecoration(
+            labelText: 'Monthly income (ETB)${required.contains('monthly_income_etb') ? ' *' : ''}',
+          ),
         ),
         const SizedBox(height: 12),
-        TextField(controller: occupationCtrl, decoration: const InputDecoration(labelText: 'Occupation')),
+        TextField(
+          controller: occupationCtrl,
+          decoration: InputDecoration(
+            labelText: 'Occupation${required.contains('occupation') ? ' *' : ''}',
+          ),
+        ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
           // ignore: deprecated_member_use
-          value: sourceOfFunds,
-          items: const [
-            DropdownMenuItem(value: 'Salary', child: Text('Salary')),
-            DropdownMenuItem(value: 'Business', child: Text('Business')),
-            DropdownMenuItem(value: 'Remittance', child: Text('Remittance')),
-            DropdownMenuItem(value: 'Savings', child: Text('Savings')),
-            DropdownMenuItem(value: 'Agriculture', child: Text('Agriculture')),
-          ],
+          value: fundValue,
+          items: [for (final v in fundEnum) DropdownMenuItem(value: v, child: Text(v))],
           onChanged: (v) {
             if (v != null) onSource(v);
           },
-          decoration: const InputDecoration(labelText: 'Source of funds'),
+          decoration: InputDecoration(
+            labelText: 'Source of funds${required.contains('source_of_funds') ? ' *' : ''}',
+          ),
         ),
         const SizedBox(height: 12),
-        TextField(controller: branchCtrl, decoration: const InputDecoration(labelText: 'Branch code (optional)')),
+        TextField(
+          controller: branchCtrl,
+          decoration: const InputDecoration(labelText: 'Branch code (optional)'),
+        ),
+        for (final key in extraKeys) ...[
+          const SizedBox(height: 12),
+          TextField(
+            controller: extraCtrls[key] ?? TextEditingController(),
+            keyboardType: (props[key] is Map && (props[key] as Map)['type'] == 'number')
+                ? TextInputType.number
+                : TextInputType.text,
+            decoration: InputDecoration(
+              labelText: '${fieldLabel(key)}${required.contains(key) ? ' *' : ''}',
+              helperText: (props[key] is Map) ? (props[key] as Map)['description']?.toString() : null,
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
         FilledButton(onPressed: onContinue, child: const Text('Continue to signature')),
       ],
@@ -1242,13 +1458,17 @@ class _Sign extends StatelessWidget {
 class _Status extends StatelessWidget {
   const _Status({
     required this.status,
+    required this.statusLabel,
     required this.account,
     required this.bankName,
+    required this.waitingLabel,
     required this.onActivate,
   });
   final String? status;
+  final String statusLabel;
   final String? account;
   final String? bankName;
+  final String waitingLabel;
   final VoidCallback? onActivate;
 
   @override
@@ -1270,7 +1490,10 @@ class _Status extends StatelessWidget {
             children: [
               Text(bankName ?? 'Bank', style: const TextStyle(color: EkycColors.muted)),
               const SizedBox(height: 8),
-              Text(status ?? '…', style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                statusLabel.isEmpty ? (status ?? '…') : statusLabel,
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               if (account != null) ...[
                 const SizedBox(height: 16),
                 const Text('Account number', style: TextStyle(color: EkycColors.muted, fontSize: 13)),
@@ -1292,7 +1515,7 @@ class _Status extends StatelessWidget {
         if (onActivate != null)
           FilledButton(onPressed: onActivate, child: const Text('Activate account'))
         else
-          const Text('Waiting for bank confirmation…', textAlign: TextAlign.center),
+          Text(waitingLabel, textAlign: TextAlign.center),
         const SizedBox(height: 8),
       ],
     );
