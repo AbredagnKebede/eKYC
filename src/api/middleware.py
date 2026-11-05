@@ -95,12 +95,21 @@ async def require_auth(
 
 
 def assert_application_scope(claims: Dict[str, Any], application_id: str) -> None:
-    """Ensure the JWT is scoped to the application resource being accessed."""
-    token_app = claims.get("application_id")
-    if token_app and str(token_app) != str(application_id):
+    """Legacy soft check: preferred application_id in JWT may differ for passport multi-app.
+
+    Prefer assert_owns_application after loading the Application row.
+    """
+    # Kept for backwards compatibility; ownership is enforced via assert_owns_application.
+    _ = (claims, application_id)
+
+
+def assert_owns_application(claims: Dict[str, Any], user_ref: str) -> None:
+    """Passport model: any application belonging to the JWT subject is accessible."""
+    subject = str(claims.get("sub") or "")
+    if not subject or not secrets.compare_digest(subject, str(user_ref)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Token is not authorized for this application session.",
+            detail="Token is not authorized for this applicant profile.",
         )
 
 

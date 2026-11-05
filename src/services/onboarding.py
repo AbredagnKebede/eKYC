@@ -68,6 +68,50 @@ class OnboardingService:
             raise ApplicationNotFoundError(application_id)
         return app
 
+    async def list_applications_for_user(
+        self,
+        session: AsyncSession,
+        user_ref: str,
+        limit: int = 50,
+    ) -> List[Application]:
+        """Passport: all journeys for one applicant profile, newest first."""
+        stmt = (
+            select(Application)
+            .options(
+                selectinload(Application.consents),
+                selectinload(Application.identity_snapshot),
+                selectinload(Application.submissions),
+            )
+            .where(Application.user_ref == user_ref)
+            .order_by(Application.created_at.desc())
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_pending_bank_queue(
+        self,
+        session: AsyncSession,
+        bank_id: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Application]:
+        """Ops console: applications awaiting bank decision."""
+        pending = (
+            ApplicationStatus.SUBMITTED_TO_BANK,
+            ApplicationStatus.BANK_ACCEPTED,
+        )
+        stmt = (
+            select(Application)
+            .options(selectinload(Application.submissions))
+            .where(Application.status.in_(pending))
+            .order_by(Application.updated_at.asc())
+            .limit(limit)
+        )
+        if bank_id:
+            stmt = stmt.where(Application.bank_id == bank_id)
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
     async def create_application(
         self,
         session: AsyncSession,

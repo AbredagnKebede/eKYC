@@ -41,6 +41,7 @@ from src.state.machine import ApplicationStateMachine
 
 from src.api.middleware import (
     assert_application_scope,
+    assert_owns_application,
     create_access_token,
     require_auth,
 )
@@ -200,6 +201,101 @@ async def refresh_session_token(
     return TokenRefreshResponse(token=token, expires_in=900)
 
 
+class DeviceSessionRequest(BaseModel):
+    user_ref: str = Field(..., min_length=3, max_length=128)
+
+
+class DeviceSessionResponse(BaseModel):
+    token: str
+    user_ref: str
+    expires_in: int = 900
+
+
+class ApplicationSummaryResponse(BaseModel):
+    application_id: uuid.UUID
+    bank_id: str
+    tier: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    expires_at: datetime
+    account_number: Optional[str] = None
+    bank_reference: Optional[str] = None
+    resume_step: str
+
+
+def _resume_step_for_status(status_value: str) -> str:
+    mapping = {
+        "DRAFT": "consent",
+        "CONSENTED": "fayda",
+        "ID_VERIFIED": "liveness",
+        "ID_FAILED": "fayda",
+        "LIVENESS_PASSED": "fields",
+        "LIVENESS_FAILED": "liveness",
+        "DATA_COMPLETE": "sign",
+        "SUBMITTED_TO_BANK": "status",
+        "BANK_ACCEPTED": "status",
+        "ACCOUNT_OPENED": "status",
+        "ACTIVATED": "done",
+        "BANK_REJECTED": "done",
+        "CANCELLED": "done",
+        "EXPIRED": "expired",
+    }
+    return mapping.get(status_value, "welcome")
+
+
+@router.post("/auth/device", response_model=DeviceSessionResponse)
+async def open_device_session(
+    req: DeviceSessionRequest,
+    x_device_fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
+) -> DeviceSessionResponse:
+    """Passport: bind a returning device to an applicant profile without creating an application."""
+    device_fp = (x_device_fingerprint or "").strip()
+    if not device_fp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Device-Fingerprint header is required.",
+        )
+    token = create_access_token(
+        user_ref=req.user_ref,
+        device_fingerprint=device_fp,
+    )
+    return DeviceSessionResponse(token=token, user_ref=req.user_ref, expires_in=900)
+
+
+@router.get("/applications", response_model=list[ApplicationSummaryResponse])
+async def list_my_applications(
+    session: AsyncSession = Depends(get_db_session),
+    onboarding: OnboardingService = Depends(get_onboarding_service),
+    claims: Dict[str, Any] = Depends(require_auth),
+) -> list[ApplicationSummaryResponse]:
+    """Passport home: all journeys for the authenticated applicant (JWT sub)."""
+    user_ref = str(claims["sub"])
+    apps = await onboarding.list_applications_for_user(session, user_ref=user_ref)
+    items: list[ApplicationSummaryResponse] = []
+    for app in apps:
+        account = None
+        bank_ref = None
+        if app.submissions:
+            account = app.submissions[0].account_number
+            bank_ref = app.submissions[0].bank_reference
+        items.append(
+            ApplicationSummaryResponse(
+                application_id=app.id,
+                bank_id=app.bank_id,
+                tier=app.tier,
+                status=app.status.value,
+                created_at=app.created_at,
+                updated_at=app.updated_at,
+                expires_at=app.expires_at,
+                account_number=account,
+                bank_reference=bank_ref,
+                resume_step=_resume_step_for_status(app.status.value),
+            )
+        )
+    return items
+
+
 @router.post("/applications", response_model=CreateApplicationResponse, status_code=status.HTTP_201_CREATED)
 async def create_application(
     req: CreateApplicationRequest,
@@ -212,11 +308,18 @@ async def create_application(
     """Initializes a new customer onboarding session in DRAFT state."""
     # Ensure bank is supported
     try:
-        banks.get_adapter(req.bank_id)
+        adapter = banks.get_adapter(req.bank_id)
     except BankNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Partner bank '{req.bank_id}' not found.",
+        )
+    tier = (req.tier or "standard").lower()
+    supported = getattr(adapter, "supported_tiers", None) or ["standard"]
+    if tier not in supported:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Tier '{tier}' not supported for {req.bank_id}. Allowed: {supported}",
         )
 
     device_fp = (x_device_fingerprint or "").strip()
@@ -229,7 +332,7 @@ async def create_application(
         session=session,
         user_ref=req.user_ref,
         bank_id=req.bank_id,
-        tier=req.tier,
+        tier=tier,
     )
     await session.commit()
 
@@ -255,9 +358,10 @@ async def get_application_details(
     claims: Dict[str, Any] = Depends(require_auth),
 ) -> ApplicationDetailResponse:
     """Returns application status, issued account number, and next steps."""
-    assert_application_scope(claims, str(application_id))
+    assert_application_scope(claims, str(application_id))  # soft; ownership below
     try:
         app = await onboarding.get_application(session, application_id)
+        assert_owns_application(claims, app.user_ref)
     except ApplicationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -305,10 +409,11 @@ async def record_consent(
     x_device_fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
 ) -> ConsentResponse:
     """Records explicit citizen consent or processes cancellation if consent refused."""
-    assert_application_scope(claims, str(application_id))
+    assert_application_scope(claims, str(application_id))  # soft; ownership below
 
     try:
         app = await onboarding.get_application(session, application_id)
+        assert_owns_application(claims, app.user_ref)
     except ApplicationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -379,9 +484,10 @@ async def start_identity_verification(
     x_device_fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
 ) -> IdentityStartResponse:
     """Dispatches Fayda OTP challenge with format verification and failure lockout protection."""
-    assert_application_scope(claims, str(application_id))
+    assert_application_scope(claims, str(application_id))  # soft; ownership below
     try:
         app = await onboarding.get_application(session, application_id)
+        assert_owns_application(claims, app.user_ref)
     except ApplicationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -470,9 +576,10 @@ async def verify_identity_otp(
     claims: Dict[str, Any] = Depends(require_auth),
 ) -> IdentityVerifyResponse:
     """Verifies citizen OTP against Fayda eKYC asserting encrypted demographic snapshot."""
-    assert_application_scope(claims, str(application_id))
+    assert_application_scope(claims, str(application_id))  # soft; ownership below
     try:
         app = await onboarding.get_application(session, application_id)
+        assert_owns_application(claims, app.user_ref)
     except ApplicationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -555,7 +662,7 @@ async def verify_liveness(
     claims: Dict[str, Any] = Depends(require_auth),
 ) -> LivenessResponse:
     """Evaluates biometric camera frames against anti-spoofing engine and face match."""
-    assert_application_scope(claims, str(application_id))
+    assert_application_scope(claims, str(application_id))  # soft; ownership below
     try:
         selfie_bytes = base64.b64decode(req.selfie_base64, validate=True)
     except Exception:
@@ -571,7 +678,10 @@ async def verify_liveness(
         except Exception:
             pass
 
+    onboarding = get_onboarding_service()
     try:
+        app_row = await onboarding.get_application(session, application_id)
+        assert_owns_application(claims, app_row.user_ref)
         res = await identity.verify_liveness_and_face(
             application_id=application_id,
             selfie_bytes=selfie_bytes,
@@ -614,9 +724,10 @@ async def save_dynamic_fields(
     claims: Dict[str, Any] = Depends(require_auth),
 ) -> DynamicFieldsResponse:
     """Validates and persists bank-specific dynamic form attributes."""
-    assert_application_scope(claims, str(application_id))
+    assert_application_scope(claims, str(application_id))  # soft; ownership below
     try:
         app = await onboarding.get_application(session, application_id)
+        assert_owns_application(claims, app.user_ref)
     except ApplicationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -625,7 +736,7 @@ async def save_dynamic_fields(
 
     # Validate against partner bank's JSONSchema specification (J-06 AP-1)
     try:
-        banks.validate_fields(app.bank_id, req.dynamic_fields)
+        banks.validate_fields(app.bank_id, req.dynamic_fields, tier=app.tier)
     except BankSchemaValidationError as schema_err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -668,8 +779,10 @@ async def submit_application(
     claims: Dict[str, Any] = Depends(require_auth),
 ) -> SubmitApplicationResponse:
     """Captures citizen signature, moves to SUBMITTED_TO_BANK, and publishes queue event."""
-    assert_application_scope(claims, str(application_id))
+    assert_application_scope(claims, str(application_id))  # soft; ownership below
     try:
+        owned = await onboarding.get_application(session, application_id)
+        assert_owns_application(claims, owned.user_ref)
         updated_app = await onboarding.submit_application(
             session=session,
             application_id=application_id,
@@ -784,9 +897,10 @@ async def activate_application(
     claims: Dict[str, Any] = Depends(require_auth),
 ) -> ActivateApplicationResponse:
     """Customer confirms account activation after ACCOUNT_OPENED (AS-01 terminal step)."""
-    assert_application_scope(claims, str(application_id))
+    assert_application_scope(claims, str(application_id))  # soft; ownership below
     try:
         app = await onboarding.get_application(session, application_id)
+        assert_owns_application(claims, app.user_ref)
     except ApplicationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
