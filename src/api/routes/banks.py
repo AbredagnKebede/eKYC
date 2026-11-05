@@ -1,15 +1,15 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from src.adapters.awash_finacle import AwashFinacleAdapter
+from src.adapters.ethiopian_banks import register_all_ethiopian_banks
 from src.services.bank_adapter import BankAdapterService, BankNotFoundError
 
 router = APIRouter(prefix="/v1/banks", tags=["Banks"])
 
-# Shared service singleton
 _bank_service = BankAdapterService()
-_bank_service.register_adapter(AwashFinacleAdapter())
+register_all_ethiopian_banks(_bank_service)
 
 
 def get_bank_adapter_service() -> BankAdapterService:
@@ -19,9 +19,13 @@ def get_bank_adapter_service() -> BankAdapterService:
 class BankMetadataResponse(BaseModel):
     bank_id: str = Field(..., description="Unique partner bank identifier")
     bank_name: str = Field(..., description="Human-readable partner bank name")
-    operational_status: str = Field(default="OPERATIONAL", description="Bank CBS integration operational health")
+    operational_status: str = Field(
+        default="OPERATIONAL", description="Bank CBS integration operational health"
+    )
     supported_tiers: List[str] = Field(..., description="Supported onboarding account tiers")
-    dynamic_schema: Dict[str, Any] = Field(..., description="JSONSchema draft-2020-12 specification for dynamic intake")
+    dynamic_schema: Dict[str, Any] = Field(
+        ..., description="JSONSchema draft-2020-12 specification for dynamic intake"
+    )
 
 
 @router.get("", response_model=List[BankMetadataResponse])
@@ -65,7 +69,9 @@ async def get_partner_bank(
 
 
 class UpdateBankSchemaRequest(BaseModel):
-    dynamic_schema: Dict[str, Any] = Field(..., description="Updated JSONSchema definition for dynamic intake")
+    dynamic_schema: Dict[str, Any] = Field(
+        ..., description="Updated JSONSchema definition for dynamic intake"
+    )
 
 
 @router.put("/{bank_id}/schema", response_model=BankMetadataResponse)

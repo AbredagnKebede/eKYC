@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from src.adapters.awash_finacle import AwashFinacleAdapter
+from src.adapters.ethiopian_banks import register_all_ethiopian_banks
 from src.clients.bank_cbs_client import (
     BankCBSAuthError,
     BankCBSCircuitBreakerOpenError,
@@ -81,13 +81,13 @@ class BankSubmissionWorker:
         self._running = False
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
 
-        # Setup adapter service and ensure default partner bank adapter is registered
+        # Setup adapter service with full Ethiopian commercial bank catalogue
         if adapter_service:
             self.adapter_service = adapter_service
         else:
             self.adapter_service = BankAdapterService()
             cbs = cbs_client or BankCBSClient()
-            self.adapter_service.register_adapter(AwashFinacleAdapter(client=cbs))
+            register_all_ethiopian_banks(self.adapter_service, client=cbs)
 
     async def emit_heartbeat(self) -> None:
         """Emits worker heartbeat status to Redis with 30s TTL."""
