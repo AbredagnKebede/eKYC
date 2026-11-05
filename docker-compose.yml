@@ -60,6 +60,9 @@ services:
     command: python sandbox/bank_cbs_sandbox.py
     environment:
       PORT: 8082
+      BANK_API_KEY: ${BANK_API_KEY:-dev-bank-key}
+      EKYC_WEBHOOK_BASE: http://api:8000
+      CBS_WEBHOOK_DELAY_SECONDS: "2"
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8082/health\")'"]
       interval: 5s
@@ -76,6 +79,7 @@ services:
       - "8005:8000"
     volumes:
       - ./src:/app/src
+      - ./static:/app/static
     env_file:
       - .env
     environment:
@@ -83,6 +87,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       FAYDA_SANDBOX_URL: http://fayda-sandbox:8081/fayda/v2
       BANK_CBS_SANDBOX_URL: http://cbs-sandbox:8082/cbs/v1
+      OPS_API_KEY: ${OPS_API_KEY:-dev-bank-key}
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,14 +1,21 @@
 import hashlib
+import hmac
 import json
 import os
 import sys
+import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, Optional
+from urllib import request as urlrequest
 
 PORT = int(os.getenv("PORT", "8082"))
 EXPECTED_API_KEY = os.getenv("BANK_API_KEY", "dev-bank-key")
+# Platform webhook base, e.g. http://api:8000 — sandbox posts AS-08 callbacks here.
+EKYC_WEBHOOK_BASE = os.getenv("EKYC_WEBHOOK_BASE", os.getenv("API_BASE_URL", "http://api:8000")).rstrip("/")
+WEBHOOK_DELAY_SECONDS = float(os.getenv("CBS_WEBHOOK_DELAY_SECONDS", "2"))
 
 
 class BankCBSSandboxState:
@@ -196,6 +203,12 @@ class BankCBSSandboxHandler(BaseHTTPRequestHandler):
                     "created_at": now_iso,
                     "message": "Application submitted for AML compliance officer review.",
                 }
+                # Async callback (sandbox AS-08): after delay, issue account via signed webhook.
+                _schedule_review_webhook(
+                    bank_id=str(bank_id),
+                    application_id=str(application_id),
+                    bank_reference=bank_ref,
+                )
             else:
                 # Deterministic account number based on hash of application_id and bank_id
                 acc_seed = int(hashlib.sha256(f"{application_id}:{bank_id}".encode()).hexdigest()[:10], 16)
@@ -225,6 +238,49 @@ class BankCBSSandboxHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: Any) -> None:
         # Suppress noisy standard logs in tests
         pass
+
+
+def _schedule_review_webhook(*, bank_id: str, application_id: str, bank_reference: str) -> None:
+    """Fire a signed ACCOUNT_OPENED webhook after a short delay (sandbox only)."""
+
+    def _worker() -> None:
+        time.sleep(WEBHOOK_DELAY_SECONDS)
+        acc_seed = int(hashlib.sha256(f"{application_id}:{bank_id}:approved".encode()).hexdigest()[:10], 16)
+        account_number = f"2000{acc_seed % 1000000000:09d}"
+        body = json.dumps(
+            {
+                "application_id": application_id,
+                "status": "ACCOUNT_OPENED",
+                "account_number": account_number,
+                "bank_reference": bank_reference,
+            }
+        ).encode("utf-8")
+        sig = hmac.new(EXPECTED_API_KEY.encode(), body, hashlib.sha256).hexdigest()
+        url = f"{EKYC_WEBHOOK_BASE}/v1/webhooks/bank/{bank_id}"
+        req = urlrequest.Request(
+            url,
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Signature-SHA256": sig,
+            },
+            method="POST",
+        )
+        try:
+            with urlrequest.urlopen(req, timeout=10) as resp:
+                resp.read()
+            # Update local sandbox account record for status polls
+            STATE.accounts_by_ref[bank_reference] = {
+                "status": "SUCCESS",
+                "bank_id": bank_id,
+                "application_id": application_id,
+                "bank_reference": bank_reference,
+                "account_number": account_number,
+            }
+        except Exception as exc:  # noqa: BLE001 — sandbox best-effort
+            sys.stderr.write(f"cbs-sandbox webhook failed: {exc}\n")
+
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def run_server(port: int = PORT) -> None:
