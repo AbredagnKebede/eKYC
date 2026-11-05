@@ -10,12 +10,10 @@ normalize_database_url() {
     echo "DATABASE_URL is required" >&2
     exit 1
   fi
-  # Render/Neon often provide postgres:// — SQLAlchemy async needs postgresql+asyncpg://
   url="${url/postgres:\/\//postgresql:\/\/}"
   if [[ "$url" != postgresql+asyncpg://* ]]; then
     url="${url/postgresql:\/\//postgresql+asyncpg:\/\/}"
   fi
-  # Drop libpq-only query params that break asyncpg if present
   export DATABASE_URL="$url"
 }
 
@@ -31,11 +29,37 @@ export AES_MASTER_KEY="${AES_MASTER_KEY:-01234567890123456789012345678901}"
 export PORT="${PORT:-8000}"
 
 echo "[cloud] Applying migrations..."
-python -m alembic upgrade head || python - <<'PY'
+python -m alembic upgrade head
+
+echo "[cloud] Ensuring ORM tables exist (create_all safety net)..."
+python - <<'PY'
 import asyncio
 from src.models.base import init_models
-asyncio.run(init_models())
-print("[cloud] init_models fallback OK")
+asyncio.run(init_models(retries=8, delay=2.0))
+print("[cloud] schema ready")
+PY
+
+echo "[cloud] Waiting for Redis..."
+python - <<'PY'
+import asyncio, os, sys
+import redis.asyncio as redis
+
+async def wait_redis():
+    url = os.environ["REDIS_URL"]
+    client = redis.from_url(url, socket_connect_timeout=5.0)
+    for i in range(30):
+        try:
+            if await client.ping():
+                print("[cloud] redis ready")
+                await client.aclose()
+                return
+        except Exception as exc:
+            print(f"[cloud] redis wait {i+1}/30: {exc}")
+            await asyncio.sleep(1)
+    await client.aclose()
+    sys.exit("Redis not reachable")
+
+asyncio.run(wait_redis())
 PY
 
 echo "[cloud] Starting Fayda sandbox on :8081"
@@ -46,7 +70,7 @@ echo "[cloud] Starting CBS sandbox on :8082"
 PORT=8082 python sandbox/bank_cbs_sandbox.py &
 CBS_PID=$!
 
-sleep 1
+sleep 2
 
 echo "[cloud] Starting bank submission worker"
 python -m src.workers.bank_submission &

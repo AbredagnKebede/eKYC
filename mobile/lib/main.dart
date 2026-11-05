@@ -10,11 +10,10 @@ import 'package:uuid/uuid.dart';
 import 'api/ekyc_api.dart';
 import 'theme.dart';
 
-/// Default reaches the host Docker API on the LAN.
-/// USB alternative: `adb reverse tcp:8005 tcp:8005` then set http://127.0.0.1:8005 in Settings.
+/// Default: Render free-tier API. Override with --dart-define=API_BASE=... or in-app Settings.
 const kDefaultApiBase = String.fromEnvironment(
   'API_BASE',
-  defaultValue: 'http://10.151.154.207:8005',
+  defaultValue: 'https://ekyc-api-jj0j.onrender.com',
 );
 
 void main() {
