@@ -34,47 +34,53 @@ class AwashFinacleAdapter(BankAdapter):
         """Resets the dynamic schema back to the default Finacle definition."""
         self._custom_schema = None
 
-    def get_dynamic_schema(self) -> Dict[str, Any]:
+    def get_dynamic_schema(self, tier: str | None = None) -> Dict[str, Any]:
         """Returns the JSONSchema for Awash Bank's dynamic intake attributes."""
         if getattr(self, "_custom_schema", None) is not None:
             return self._custom_schema
+        t = (tier or "standard").lower()
+        required = ["monthly_income_etb", "occupation", "source_of_funds"]
+        properties: Dict[str, Any] = {
+            "monthly_income_etb": {"type": "number", "minimum": 0, "description": "Applicant monthly income in Ethiopian Birr (ETB)."},
+            "occupation": {"type": "string", "minLength": 2, "description": "Applicant primary employment occupation."},
+            "source_of_funds": {"type": "string", "enum": ["Salary", "Business", "Remittance", "Savings"], "description": "Primary verified source of account funds."},
+            "branch_code": {"type": "string", "description": "Preferred Awash Bank home branch routing code."},
+            "initial_deposit_etb": {"type": "number", "minimum": 0, "description": "Optional initial opening deposit amount in ETB."},
+            "requires_review": {"type": "boolean", "description": "Flag indicating manual AML compliance officer review."},
+        }
+        if t == "diaspora":
+            required.extend(["country_of_residence", "foreign_tax_id"])
+            properties["country_of_residence"] = {"type": "string", "minLength": 2, "description": "Country of residence abroad."}
+            properties["foreign_tax_id"] = {"type": "string", "minLength": 4, "description": "Foreign tax ID for remittance compliance."}
+        elif t == "youth":
+            required.append("guardian_full_name")
+            properties["guardian_full_name"] = {"type": "string", "minLength": 3, "description": "Guardian full legal name."}
+        elif t == "enterprise":
+            required.extend(["business_name", "tin_number"])
+            properties["business_name"] = {"type": "string", "minLength": 2, "description": "Registered business name."}
+            properties["tin_number"] = {"type": "string", "minLength": 5, "description": "Business TIN."}
         return {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "AwashBankDynamicFields",
+            "title": f"AwashBank_{t}_DynamicFields",
             "type": "object",
-            "required": ["monthly_income_etb", "occupation", "source_of_funds"],
-            "properties": {
-                "monthly_income_etb": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "Applicant monthly income in Ethiopian Birr (ETB).",
-                },
-                "occupation": {
-                    "type": "string",
-                    "minLength": 2,
-                    "description": "Applicant primary employment occupation.",
-                },
-                "source_of_funds": {
-                    "type": "string",
-                    "enum": ["Salary", "Business", "Remittance", "Savings"],
-                    "description": "Primary verified source of account funds.",
-                },
-                "branch_code": {
-                    "type": "string",
-                    "description": "Preferred Awash Bank home branch routing code.",
-                },
-                "initial_deposit_etb": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "Optional initial opening deposit amount in ETB.",
-                },
-                "requires_review": {
-                    "type": "boolean",
-                    "description": "Flag indicating manual AML compliance officer review.",
-                },
-            },
+            "required": required,
+            "properties": properties,
             "additionalProperties": False,
+            "x-tier": t,
+            "x-tier-copy": {
+                "standard": "Everyday retail account",
+                "diaspora": "For Ethiopians living abroad",
+                "youth": "Youth account with guardian details",
+                "enterprise": "Business account (manual AML review)",
+            }.get(t, t),
         }
+
+    def schemas_by_tier(self) -> Dict[str, Dict[str, Any]]:
+        return {tier: self.get_dynamic_schema(tier) for tier in self.supported_tiers}
+
+    def validate_dynamic_fields(self, dynamic_fields: Dict[str, Any], tier: str | None = None) -> None:
+        from src.services.bank_adapter import validate_json_schema
+        validate_json_schema(self.get_dynamic_schema(tier), dynamic_fields)
 
     def transform_payload(self, application_data: Dict[str, Any]) -> Dict[str, Any]:
         """Transforms platform onboarding application data to Awash Finacle CBS schema."""
@@ -89,7 +95,7 @@ class AwashFinacleAdapter(BankAdapter):
             )
 
         dynamic_fields = application_data.get("dynamic_fields", {})
-        self.validate_dynamic_fields(dynamic_fields)
+        self.validate_dynamic_fields(dynamic_fields, tier=tier)
 
         demographics = application_data.get("demographics") or application_data.get("customer_details") or {}
         full_name = demographics.get("full_name", "Anonymous Applicant")

@@ -28,36 +28,58 @@ class BankMetadataResponse(BaseModel):
     dynamic_schema: Dict[str, Any] = Field(
         ..., description="JSONSchema draft-2020-12 specification for dynamic intake"
     )
+    schemas_by_tier: Optional[Dict[str, Dict[str, Any]]] = Field(
+        default=None, description="Per-tier JSONSchemas when available"
+    )
 
 
 @router.get("", response_model=List[BankMetadataResponse])
 async def list_partner_banks(
+    tier: Optional[str] = None,
     service: BankAdapterService = Depends(get_bank_adapter_service),
 ) -> List[BankMetadataResponse]:
     """Retrieves the active registry of partner banks, supported tiers, and dynamic JSONSchemas."""
     banks = service.list_supported_banks()
-    return [
-        BankMetadataResponse(
-            bank_id=b["bank_id"],
-            bank_name=b["bank_name"],
-            short_code=b.get("short_code"),
-            hq_city=b.get("hq_city"),
-            operational_status="OPERATIONAL",
-            supported_tiers=b["supported_tiers"],
-            dynamic_schema=b["dynamic_schema"],
+    items: List[BankMetadataResponse] = []
+    for b in banks:
+        schema = b["dynamic_schema"]
+        by_tier = b.get("schemas_by_tier")
+        if tier and by_tier and tier in by_tier:
+            schema = by_tier[tier]
+        elif tier and hasattr(service.get_adapter(b["bank_id"]), "get_dynamic_schema"):
+            try:
+                schema = service.get_adapter(b["bank_id"]).get_dynamic_schema(tier)  # type: ignore[call-arg]
+            except TypeError:
+                pass
+        items.append(
+            BankMetadataResponse(
+                bank_id=b["bank_id"],
+                bank_name=b["bank_name"],
+                short_code=b.get("short_code"),
+                hq_city=b.get("hq_city"),
+                operational_status="OPERATIONAL",
+                supported_tiers=b["supported_tiers"],
+                dynamic_schema=schema,
+                schemas_by_tier=by_tier,
+            )
         )
-        for b in banks
-    ]
+    return items
 
 
 @router.get("/{bank_id}", response_model=BankMetadataResponse)
 async def get_partner_bank(
     bank_id: str,
+    tier: Optional[str] = None,
     service: BankAdapterService = Depends(get_bank_adapter_service),
 ) -> BankMetadataResponse:
     """Retrieves metadata and schema specification for a specific partner bank."""
     try:
         adapter = service.get_adapter(bank_id)
+        try:
+            schema = adapter.get_dynamic_schema(tier) if tier else adapter.get_dynamic_schema()  # type: ignore[call-arg]
+        except TypeError:
+            schema = adapter.get_dynamic_schema()
+        by_tier = adapter.schemas_by_tier() if hasattr(adapter, "schemas_by_tier") else None
         return BankMetadataResponse(
             bank_id=adapter.bank_id,
             bank_name=adapter.bank_name,
@@ -65,7 +87,8 @@ async def get_partner_bank(
             hq_city=getattr(adapter, "hq_city", None),
             operational_status="OPERATIONAL",
             supported_tiers=adapter.supported_tiers,
-            dynamic_schema=adapter.get_dynamic_schema(),
+            dynamic_schema=schema,
+            schemas_by_tier=by_tier,
         )
     except BankNotFoundError:
         raise HTTPException(

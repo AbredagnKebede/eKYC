@@ -204,46 +204,124 @@ class EthiopianBankAdapter(BankAdapter):
     def reset_dynamic_schema(self) -> None:
         self._custom_schema = None
 
-    def get_dynamic_schema(self) -> Dict[str, Any]:
+    def get_dynamic_schema(self, tier: Optional[str] = None) -> Dict[str, Any]:
         if self._custom_schema is not None:
             return self._custom_schema
-        return {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": f"{self.short_code}DynamicFields",
-            "type": "object",
-            "required": ["monthly_income_etb", "occupation", "source_of_funds"],
-            "properties": {
-                "monthly_income_etb": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "Monthly income in Ethiopian Birr (ETB).",
-                },
-                "occupation": {
+        t = (tier or "standard").lower()
+        required = ["monthly_income_etb", "occupation", "source_of_funds"]
+        properties: Dict[str, Any] = {
+            "monthly_income_etb": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Monthly income in Ethiopian Birr (ETB).",
+            },
+            "occupation": {
+                "type": "string",
+                "minLength": 2,
+                "description": "Primary occupation.",
+            },
+            "source_of_funds": {
+                "type": "string",
+                "enum": ["Salary", "Business", "Remittance", "Savings", "Agriculture"],
+                "description": "Primary source of funds.",
+            },
+            "branch_code": {
+                "type": "string",
+                "description": f"Preferred {self.bank_name} branch code ({self.hq_city}).",
+            },
+            "initial_deposit_etb": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Optional opening deposit in ETB.",
+            },
+            "requires_review": {
+                "type": "boolean",
+                "description": "Request manual AML officer review.",
+            },
+        }
+        if t == "diaspora":
+            required.extend(["country_of_residence", "foreign_tax_id"])
+            properties["country_of_residence"] = {
+                "type": "string",
+                "minLength": 2,
+                "description": "Country where the diaspora customer currently resides.",
+            }
+            properties["foreign_tax_id"] = {
+                "type": "string",
+                "minLength": 4,
+                "description": "Foreign tax identification / TIN for remittance compliance.",
+            }
+            properties["source_of_funds"]["enum"] = ["Remittance", "Salary", "Business", "Savings"]
+        elif t == "youth":
+            required.append("guardian_full_name")
+            properties["guardian_full_name"] = {
+                "type": "string",
+                "minLength": 3,
+                "description": "Parent or guardian full legal name.",
+            }
+            properties["student_id"] = {
+                "type": "string",
+                "description": "Optional school or university student ID.",
+            }
+        elif t in ("women", "premium"):
+            if t == "women":
+                required.append("preferred_branch_city")
+                properties["preferred_branch_city"] = {
                     "type": "string",
                     "minLength": 2,
-                    "description": "Primary occupation.",
-                },
-                "source_of_funds": {
-                    "type": "string",
-                    "enum": ["Salary", "Business", "Remittance", "Savings", "Agriculture"],
-                    "description": "Primary source of funds.",
-                },
-                "branch_code": {
-                    "type": "string",
-                    "description": f"Preferred {self.bank_name} branch code ({self.hq_city}).",
-                },
-                "initial_deposit_etb": {
+                    "description": "Preferred city for Enat / women banking services.",
+                }
+            else:
+                required.append("expected_monthly_turnover_etb")
+                properties["expected_monthly_turnover_etb"] = {
                     "type": "number",
                     "minimum": 0,
-                    "description": "Optional opening deposit in ETB.",
-                },
-                "requires_review": {
-                    "type": "boolean",
-                    "description": "Request manual AML officer review.",
-                },
-            },
+                    "description": "Expected monthly account turnover in ETB.",
+                }
+        elif t == "enterprise":
+            required.extend(["business_name", "tin_number"])
+            properties["business_name"] = {
+                "type": "string",
+                "minLength": 2,
+                "description": "Registered business / trade name.",
+            }
+            properties["tin_number"] = {
+                "type": "string",
+                "minLength": 5,
+                "description": "Ethiopian TIN for the enterprise.",
+            }
+            properties["requires_review"] = {
+                "type": "boolean",
+                "description": "Enterprise openings require AML review.",
+                "default": True,
+            }
+
+        return {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": f"{self.short_code}_{t}_DynamicFields",
+            "type": "object",
+            "required": required,
+            "properties": properties,
             "additionalProperties": False,
+            "x-tier": t,
+            "x-tier-copy": {
+                "standard": "Everyday retail account",
+                "diaspora": "For Ethiopians living abroad",
+                "youth": "Student / youth account with guardian details",
+                "women": "Women-focused banking product",
+                "premium": "Higher-turnover personal banking",
+                "enterprise": "Business account (manual AML review)",
+            }.get(t, t),
         }
+
+    def schemas_by_tier(self) -> Dict[str, Dict[str, Any]]:
+        return {tier: self.get_dynamic_schema(tier) for tier in self.supported_tiers}
+
+    def validate_dynamic_fields(self, dynamic_fields: Dict[str, Any], tier: Optional[str] = None) -> None:
+        from src.services.bank_adapter import validate_json_schema
+
+        schema = self.get_dynamic_schema(tier)
+        validate_json_schema(schema, dynamic_fields)
 
     def transform_payload(self, application_data: Dict[str, Any]) -> Dict[str, Any]:
         app_id = application_data.get("application_id")
@@ -257,7 +335,7 @@ class EthiopianBankAdapter(BankAdapter):
             )
 
         dynamic_fields = application_data.get("dynamic_fields", {})
-        self.validate_dynamic_fields(dynamic_fields)
+        self.validate_dynamic_fields(dynamic_fields, tier=tier)
 
         demographics = application_data.get("demographics") or application_data.get("customer_details") or {}
         scheme = f"{self.short_code}-SB-{tier[:3].upper()}"

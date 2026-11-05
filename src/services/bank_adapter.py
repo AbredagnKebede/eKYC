@@ -127,9 +127,14 @@ class BankAdapter(ABC):
         """Returns the JSONSchema governing bank-specific intake form fields."""
         raise NotImplementedError
 
-    def validate_dynamic_fields(self, dynamic_fields: Dict[str, Any]) -> None:
+    def validate_dynamic_fields(self, dynamic_fields: Dict[str, Any], tier: Optional[str] = None) -> None:
         """Validates applicant dynamic fields against the bank's active schema."""
         schema = self.get_dynamic_schema()
+        if hasattr(self, "get_dynamic_schema") and tier is not None:
+            try:
+                schema = self.get_dynamic_schema(tier)  # type: ignore[call-arg]
+            except TypeError:
+                schema = self.get_dynamic_schema()
         validate_json_schema(schema, dynamic_fields)
 
     @abstractmethod
@@ -165,22 +170,33 @@ class BankAdapterService:
 
     def list_supported_banks(self) -> List[Dict[str, Any]]:
         """Returns metadata and schemas for all active partner banks."""
-        return [
-            {
-                "bank_id": adapter.bank_id,
-                "bank_name": adapter.bank_name,
-                "short_code": getattr(adapter, "short_code", None),
-                "hq_city": getattr(adapter, "hq_city", None),
-                "supported_tiers": adapter.supported_tiers,
-                "dynamic_schema": adapter.get_dynamic_schema(),
-            }
-            for adapter in self._adapters.values()
-        ]
+        rows: List[Dict[str, Any]] = []
+        for adapter in self._adapters.values():
+            schemas_by_tier = None
+            if hasattr(adapter, "schemas_by_tier"):
+                schemas_by_tier = adapter.schemas_by_tier()  # type: ignore[attr-defined]
+            rows.append(
+                {
+                    "bank_id": adapter.bank_id,
+                    "bank_name": adapter.bank_name,
+                    "short_code": getattr(adapter, "short_code", None),
+                    "hq_city": getattr(adapter, "hq_city", None),
+                    "supported_tiers": adapter.supported_tiers,
+                    "dynamic_schema": adapter.get_dynamic_schema(),
+                    "schemas_by_tier": schemas_by_tier,
+                }
+            )
+        return rows
 
-    def validate_fields(self, bank_id: str, dynamic_fields: Dict[str, Any]) -> None:
+    def validate_fields(
+        self,
+        bank_id: str,
+        dynamic_fields: Dict[str, Any],
+        tier: Optional[str] = None,
+    ) -> None:
         """Validates dynamic fields against the specified partner bank's schema."""
         adapter = self.get_adapter(bank_id)
-        adapter.validate_dynamic_fields(dynamic_fields)
+        adapter.validate_dynamic_fields(dynamic_fields, tier=tier)
 
     def update_dynamic_schema(self, bank_id: str, schema: Dict[str, Any]) -> None:
         """Dynamically updates the JSONSchema definition for a registered partner bank."""
