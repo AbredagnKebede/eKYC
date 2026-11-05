@@ -188,8 +188,11 @@ def create_app() -> FastAPI:
         )
 
     # 6. Mount API Routers
+    from src.api.routes.ops import router as ops_router
+
     app.include_router(banks_router)
     app.include_router(applications_router)
+    app.include_router(ops_router)
 
     # 7. Tester landing page + APK downloads
     static_root = Path(__file__).resolve().parents[2] / "static"
@@ -205,6 +208,10 @@ def create_app() -> FastAPI:
     @app.get("/testers", include_in_schema=False)
     async def tester_page() -> FileResponse:
         return FileResponse(static_root / "testers" / "index.html")
+
+    @app.get("/ops", include_in_schema=False)
+    async def ops_console() -> FileResponse:
+        return FileResponse(static_root / "ops" / "index.html")
 
     return app
 

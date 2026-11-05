@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fayda Onboard — Bank Ops</title>
+  <style>
+    :root { --navy:#0A2540; --teal:#0F766E; --paper:#F3F5F8; --ink:#0E1A2B; --line:#D2DAE4; --danger:#B42318; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: "Segoe UI", system-ui, sans-serif; background:var(--paper); color:var(--ink); }
+    header { background:var(--navy); color:#fff; padding:1rem 1.25rem; display:flex; gap:1rem; flex-wrap:wrap; align-items:center; }
+    header h1 { font-size:1.1rem; margin:0; font-weight:700; }
+    main { max-width:960px; margin:0 auto; padding:1.25rem; }
+    label { font-size:0.85rem; color:#5A6678; display:block; margin-bottom:0.25rem; }
+    input, select, button, textarea { font:inherit; }
+    input, select, textarea { width:100%; padding:0.55rem 0.65rem; border:1px solid var(--line); border-radius:8px; background:#fff; }
+    .row { display:grid; grid-template-columns:1fr 1fr auto; gap:0.75rem; margin-bottom:1rem; align-items:end; }
+    button { background:var(--teal); color:#fff; border:0; border-radius:8px; padding:0.65rem 1rem; font-weight:650; cursor:pointer; }
+    button.secondary { background:var(--navy); }
+    button.danger { background:var(--danger); }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:0.9rem 1rem; margin-bottom:0.75rem; }
+    .meta { color:#5A6678; font-size:0.85rem; }
+    .actions { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.65rem; }
+    table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+    th, td { text-align:left; padding:0.45rem 0.35rem; border-bottom:1px solid var(--line); }
+    .err { color:var(--danger); margin:0.5rem 0; }
+    .ok { color:var(--teal); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Bank Ops Console</h1>
+    <span class="meta" style="color:#C9D4E0">Sandbox approve / reject / audit</span>
+  </header>
+  <main>
+    <div class="row">
+      <div>
+        <label>API base</label>
+        <input id="apiBase" value="" />
+      </div>
+      <div>
+        <label>X-Ops-Api-Key</label>
+        <input id="opsKey" value="dev-bank-key" />
+      </div>
+      <button id="refreshBtn" type="button">Refresh queue</button>
+    </div>
+    <p id="msg" class="meta"></p>
+    <section>
+      <h2>Pending queue</h2>
+      <div id="queue"></div>
+    </section>
+    <section style="margin-top:2rem">
+      <h2>Audit trail</h2>
+      <button id="auditBtn" class="secondary" type="button">Load recent audit</button>
+      <div id="audit" style="margin-top:0.75rem; overflow:auto"></div>
+    </section>
+  </main>
+  <script>
+    const apiBaseEl = document.getElementById('apiBase');
+    apiBaseEl.value = window.location.origin;
+    const msg = document.getElementById('msg');
+    function headers() {
+      return { 'Content-Type': 'application/json', 'X-Ops-Api-Key': document.getElementById('opsKey').value.trim() };
+    }
+    async function refreshQueue() {
+      msg.textContent = 'Loading…';
+      const base = apiBaseEl.value.replace(/\/$/, '');
+      const r = await fetch(base + '/v1/ops/queue', { headers: headers() });
+      if (!r.ok) { msg.innerHTML = '<span class="err">Queue failed: ' + r.status + ' ' + await r.text() + '</span>'; return; }
+      const items = await r.json();
+      msg.innerHTML = '<span class="ok">' + items.length + ' pending</span>';
+      const root = document.getElementById('queue');
+      root.innerHTML = '';
+      if (!items.length) { root.innerHTML = '<p class="meta">No applications awaiting bank decision.</p>'; return; }
+      for (const a of items) {
+        const el = document.createElement('div');
+        el.className = 'card';
+        el.innerHTML = '<strong>' + a.bank_id + '</strong> · ' + a.status +
+          '<div class="meta">' + a.application_id + ' · tier ' + a.tier + ' · user ' + a.user_ref + '</div>' +
+          '<div class="actions">' +
+          '<button data-approve="' + a.application_id + '">Approve</button>' +
+          '<button class="danger" data-reject="' + a.application_id + '">Reject</button>' +
+          '</div>';
+        root.appendChild(el);
+      }
+      root.querySelectorAll('[data-approve]').forEach(btn => btn.onclick = () => approve(btn.dataset.approve));
+      root.querySelectorAll('[data-reject]').forEach(btn => btn.onclick = () => reject(btn.dataset.reject));
+    }
+    async function approve(id) {
+      const account = prompt('Account number to issue', '1000' + Math.floor(Math.random()*1e9));
+      if (!account) return;
+      const base = apiBaseEl.value.replace(/\/$/, '');
+      const r = await fetch(base + '/v1/ops/applications/' + id + '/approve', {
+        method: 'POST', headers: headers(), body: JSON.stringify({ account_number: account })
+      });
+      msg.textContent = r.ok ? 'Approved ' + id : 'Approve failed: ' + await r.text();
+      refreshQueue();
+    }
+    async function reject(id) {
+      const reason = prompt('Rejection reason', 'AML review declined');
+      if (!reason) return;
+      const base = apiBaseEl.value.replace(/\/$/, '');
+      const r = await fetch(base + '/v1/ops/applications/' + id + '/reject', {
+        method: 'POST', headers: headers(), body: JSON.stringify({ reason })
+      });
+      msg.textContent = r.ok ? 'Rejected ' + id : 'Reject failed: ' + await r.text();
+      refreshQueue();
+    }
+    async function loadAudit() {
+      const base = apiBaseEl.value.replace(/\/$/, '');
+      const r = await fetch(base + '/v1/ops/audit?limit=50', { headers: headers() });
+      if (!r.ok) { document.getElementById('audit').textContent = await r.text(); return; }
+      const rows = await r.json();
+      let html = '<table><thead><tr><th>id</th><th>time</th><th>actor</th><th>action</th><th>application</th></tr></thead><tbody>';
+      for (const row of rows) {
+        html += '<tr><td>' + row.id + '</td><td>' + row.timestamp + '</td><td>' + row.actor_type + '/' + row.actor_id +
+          '</td><td>' + row.action + '</td><td>' + (row.application_id || '') + '</td></tr>';
+      }
+      html += '</tbody></table>';
+      document.getElementById('audit').innerHTML = html;
+    }
+    document.getElementById('refreshBtn').onclick = refreshQueue;
+    document.getElementById('auditBtn').onclick = loadAudit;
+    refreshQueue();
+  </script>
+</body>
+</html>

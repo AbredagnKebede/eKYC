@@ -93,6 +93,22 @@ class AuditService:
         await session.flush()
         return entry
 
+    async def list_recent(
+        self,
+        session: AsyncSession,
+        *,
+        application_id: Optional[uuid.UUID] = None,
+        limit: int = 100,
+    ) -> List[AuditLog]:
+        """Newest-first audit feed for ops / compliance viewers."""
+        stmt = select(AuditLog).order_by(AuditLog.id.desc()).limit(limit)
+        if application_id is not None:
+            stmt = select(AuditLog).where(AuditLog.application_id == application_id).order_by(
+                AuditLog.id.desc()
+            ).limit(limit)
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
     async def verify_ledger_integrity(
         self,
         session: AsyncSession,
