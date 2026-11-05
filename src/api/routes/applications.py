@@ -214,6 +214,7 @@ class DeviceSessionResponse(BaseModel):
 class ApplicationSummaryResponse(BaseModel):
     application_id: uuid.UUID
     bank_id: str
+    bank_name: Optional[str] = None
     tier: str
     status: str
     created_at: datetime
@@ -267,6 +268,7 @@ async def open_device_session(
 async def list_my_applications(
     session: AsyncSession = Depends(get_db_session),
     onboarding: OnboardingService = Depends(get_onboarding_service),
+    banks: BankAdapterService = Depends(get_bank_adapter_service),
     claims: Dict[str, Any] = Depends(require_auth),
 ) -> list[ApplicationSummaryResponse]:
     """Passport home: all journeys for the authenticated applicant (JWT sub)."""
@@ -279,10 +281,16 @@ async def list_my_applications(
         if app.submissions:
             account = app.submissions[0].account_number
             bank_ref = app.submissions[0].bank_reference
+        bank_name = None
+        try:
+            bank_name = banks.get_adapter(app.bank_id).bank_name
+        except BankNotFoundError:
+            bank_name = app.bank_id
         items.append(
             ApplicationSummaryResponse(
                 application_id=app.id,
                 bank_id=app.bank_id,
+                bank_name=bank_name,
                 tier=app.tier,
                 status=app.status.value,
                 created_at=app.created_at,
