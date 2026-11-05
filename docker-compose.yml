@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -78,26 +76,27 @@ services:
       - "8005:8000"
     volumes:
       - ./src:/app/src
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ekyc_db
       REDIS_URL: redis://redis:6379/0
-      JWT_SECRET_KEY: dev-insecure-jwt-secret-replace-in-prod
-      HMAC_SALT_KEY: dev-insecure-hmac-salt-replace-in-prod
-      AES_MASTER_KEY: "01234567890123456789012345678901"
-      FAYDA_API_KEY: dev-fayda-key
       FAYDA_SANDBOX_URL: http://fayda-sandbox:8081/fayda/v2
-      BANK_API_KEY: dev-bank-key
       BANK_CBS_SANDBOX_URL: http://cbs-sandbox:8082/cbs/v1
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      fayda-sandbox:
+        condition: service_healthy
+      cbs-sandbox:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 8
     restart: unless-stopped
 
   worker:
@@ -108,18 +107,38 @@ services:
     command: python -m src.workers.bank_submission
     volumes:
       - ./src:/app/src
+    env_file:
+      - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ekyc_db
       REDIS_URL: redis://redis:6379/0
-      HMAC_SALT_KEY: dev-insecure-hmac-salt-replace-in-prod
-      AES_MASTER_KEY: "01234567890123456789012345678901"
-      BANK_API_KEY: dev-bank-key
       BANK_CBS_SANDBOX_URL: http://cbs-sandbox:8082/cbs/v1
       WORKER_ID: ekyc-worker
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      cbs-sandbox:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cleanup:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: ekyc-cleanup
+    command: python -m src.workers.cleanup
+    volumes:
+      - ./src:/app/src
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ekyc_db
+      REDIS_URL: redis://redis:6379/0
+      CLEANUP_INTERVAL_SECONDS: "60"
+    depends_on:
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 

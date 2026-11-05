@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN chmod +x scripts/start_cloud.sh \
+    && mkdir -p /app/static/releases
+
+# Optional: copy prebuilt APK into image if present at build time
+# COPY mobile/build/app/outputs/flutter-apk/app-release.apk /app/static/releases/ekyc-tester.apk
+
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
+  CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
+
+CMD ["bash", "scripts/start_cloud.sh"]

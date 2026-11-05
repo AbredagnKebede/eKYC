@@ -40,10 +40,9 @@ from src.services.onboarding import (
 from src.state.machine import ApplicationStateMachine
 
 from src.api.middleware import (
-    HTTPAuthorizationCredentials,
+    assert_application_scope,
     create_access_token,
-    decode_access_token,
-    security_bearer,
+    require_auth,
 )
 from src.api.routes.banks import get_bank_adapter_service
 
@@ -176,7 +175,31 @@ class WebhookCallbackResponse(BaseModel):
     idempotent: Optional[bool] = None
 
 
+class TokenRefreshResponse(BaseModel):
+    token: str
+    expires_in: int = 900
+
+
+class ActivateApplicationResponse(BaseModel):
+    application_id: uuid.UUID
+    status: str
+    activation_instructions: Optional[str] = None
+
+
 # Endpoints
+@router.post("/auth/refresh", response_model=TokenRefreshResponse)
+async def refresh_session_token(
+    claims: Dict[str, Any] = Depends(require_auth),
+) -> TokenRefreshResponse:
+    """Silent sliding renewal of an authenticated device-bound session (CH-01)."""
+    token = create_access_token(
+        user_ref=str(claims["sub"]),
+        device_fingerprint=str(claims["device_fingerprint"]),
+        extra_claims={"application_id": claims.get("application_id")},
+    )
+    return TokenRefreshResponse(token=token, expires_in=900)
+
+
 @router.post("/applications", response_model=CreateApplicationResponse, status_code=status.HTTP_201_CREATED)
 async def create_application(
     req: CreateApplicationRequest,
@@ -196,7 +219,12 @@ async def create_application(
             detail=f"Partner bank '{req.bank_id}' not found.",
         )
 
-    device_fp = x_device_fingerprint or "default-device-fp"
+    device_fp = (x_device_fingerprint or "").strip()
+    if not device_fp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Device-Fingerprint header is required to bind the session.",
+        )
     app = await onboarding.create_application(
         session=session,
         user_ref=req.user_ref,
@@ -224,8 +252,10 @@ async def get_application_details(
     application_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
     onboarding: OnboardingService = Depends(get_onboarding_service),
+    claims: Dict[str, Any] = Depends(require_auth),
 ) -> ApplicationDetailResponse:
     """Returns application status, issued account number, and next steps."""
+    assert_application_scope(claims, str(application_id))
     try:
         app = await onboarding.get_application(session, application_id)
     except ApplicationNotFoundError:
@@ -242,8 +272,12 @@ async def get_application_details(
         bank_ref = sub.bank_reference
 
     instructions = None
-    if app.status == ApplicationStatus.ACCOUNT_OPENED:
-        instructions = f"Welcome to your new account at {app.bank_id}! Visit any branch with your Fayda ID or activate mobile banking using your registered phone number."
+    if app.status in (ApplicationStatus.ACCOUNT_OPENED, ApplicationStatus.ACTIVATED):
+        instructions = (
+            f"Welcome to your new account at {app.bank_id}! "
+            "Activate mobile banking with your registered phone number, "
+            "or visit any branch with your Fayda ID."
+        )
 
     return ApplicationDetailResponse(
         application_id=app.id,
@@ -267,12 +301,11 @@ async def record_consent(
     request: Request,
     session: AsyncSession = Depends(get_db_session),
     onboarding: OnboardingService = Depends(get_onboarding_service),
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
+    claims: Dict[str, Any] = Depends(require_auth),
     x_device_fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
 ) -> ConsentResponse:
     """Records explicit citizen consent or processes cancellation if consent refused."""
-    if credentials:
-        decode_access_token(credentials.credentials)
+    assert_application_scope(claims, str(application_id))
 
     try:
         app = await onboarding.get_application(session, application_id)
@@ -342,9 +375,11 @@ async def start_identity_verification(
     onboarding: OnboardingService = Depends(get_onboarding_service),
     identity: IdentityService = Depends(get_identity_service),
     redis_client: Any = Depends(get_redis_dep),
+    claims: Dict[str, Any] = Depends(require_auth),
     x_device_fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
 ) -> IdentityStartResponse:
     """Dispatches Fayda OTP challenge with format verification and failure lockout protection."""
+    assert_application_scope(claims, str(application_id))
     try:
         app = await onboarding.get_application(session, application_id)
     except ApplicationNotFoundError:
@@ -432,8 +467,10 @@ async def verify_identity_otp(
     onboarding: OnboardingService = Depends(get_onboarding_service),
     identity: IdentityService = Depends(get_identity_service),
     redis_client: Any = Depends(get_redis_dep),
+    claims: Dict[str, Any] = Depends(require_auth),
 ) -> IdentityVerifyResponse:
     """Verifies citizen OTP against Fayda eKYC asserting encrypted demographic snapshot."""
+    assert_application_scope(claims, str(application_id))
     try:
         app = await onboarding.get_application(session, application_id)
     except ApplicationNotFoundError:
@@ -515,8 +552,10 @@ async def verify_liveness(
     req: LivenessRequest,
     session: AsyncSession = Depends(get_db_session),
     identity: IdentityService = Depends(get_identity_service),
+    claims: Dict[str, Any] = Depends(require_auth),
 ) -> LivenessResponse:
     """Evaluates biometric camera frames against anti-spoofing engine and face match."""
+    assert_application_scope(claims, str(application_id))
     try:
         selfie_bytes = base64.b64decode(req.selfie_base64, validate=True)
     except Exception:
@@ -572,8 +611,10 @@ async def save_dynamic_fields(
     session: AsyncSession = Depends(get_db_session),
     onboarding: OnboardingService = Depends(get_onboarding_service),
     banks: BankAdapterService = Depends(get_bank_adapter_service),
+    claims: Dict[str, Any] = Depends(require_auth),
 ) -> DynamicFieldsResponse:
     """Validates and persists bank-specific dynamic form attributes."""
+    assert_application_scope(claims, str(application_id))
     try:
         app = await onboarding.get_application(session, application_id)
     except ApplicationNotFoundError:
@@ -624,8 +665,10 @@ async def submit_application(
     req: SubmitApplicationRequest,
     session: AsyncSession = Depends(get_db_session),
     onboarding: OnboardingService = Depends(get_onboarding_service),
+    claims: Dict[str, Any] = Depends(require_auth),
 ) -> SubmitApplicationResponse:
     """Captures citizen signature, moves to SUBMITTED_TO_BANK, and publishes queue event."""
+    assert_application_scope(claims, str(application_id))
     try:
         updated_app = await onboarding.submit_application(
             session=session,
@@ -727,4 +770,58 @@ async def bank_webhook_callback(
     return WebhookCallbackResponse(
         status="acknowledged",
         application_id=str(app.id),
+    )
+
+
+@router.post(
+    "/applications/{application_id}/activate",
+    response_model=ActivateApplicationResponse,
+)
+async def activate_application(
+    application_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    onboarding: OnboardingService = Depends(get_onboarding_service),
+    claims: Dict[str, Any] = Depends(require_auth),
+) -> ActivateApplicationResponse:
+    """Customer confirms account activation after ACCOUNT_OPENED (AS-01 terminal step)."""
+    assert_application_scope(claims, str(application_id))
+    try:
+        app = await onboarding.get_application(session, application_id)
+    except ApplicationNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Application {application_id} not found.",
+        )
+
+    if app.status == ApplicationStatus.ACTIVATED:
+        return ActivateApplicationResponse(
+            application_id=app.id,
+            status=app.status.value,
+            activation_instructions="Account already activated. You may use mobile banking.",
+        )
+
+    if app.status != ApplicationStatus.ACCOUNT_OPENED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot activate from status {app.status.value}; ACCOUNT_OPENED required.",
+        )
+
+    ApplicationStateMachine.validate_transition(app.status, ApplicationStatus.ACTIVATED)
+    app.status = ApplicationStatus.ACTIVATED
+    await onboarding.audit_service.record_event(
+        session=session,
+        actor_type="CUSTOMER",
+        actor_id=app.user_ref,
+        action="ACCOUNT_ACTIVATED",
+        application_id=app.id,
+        payload={"bank_id": app.bank_id},
+    )
+    await session.commit()
+    return ActivateApplicationResponse(
+        application_id=app.id,
+        status=ApplicationStatus.ACTIVATED.value,
+        activation_instructions=(
+            f"Your {app.bank_id} account is activated. "
+            "Download the bank mobile app or visit a branch to set your PIN."
+        ),
     )

@@ -4,3 +4,12 @@ __pycache__/
 .pytest_cache/
 .coverage
 *.egg-info/
+.env
+mobile/.dart_tool/
+mobile/build/
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/.flutter-plugins-dependencies
+*.iml
+*.apk
+!static/releases/.gitkeep

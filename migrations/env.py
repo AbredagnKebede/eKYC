@@ -19,9 +19,13 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-db_url = os.getenv(
-    "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/ekyc_db",
+from src.models.base import normalize_database_url
+
+db_url = normalize_database_url(
+    os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/ekyc_db",
+    )
 )
 config.set_main_option("sqlalchemy.url", db_url)
 

@@ -75,16 +75,33 @@ async def require_auth(
 
     claims = decode_access_token(credentials.credentials)
 
-    # Verify client device fingerprint binding (ADR-005 / §6.1)
+    # Device fingerprint is required and must match the token binding (§6.1)
     token_fingerprint = claims.get("device_fingerprint")
-    if token_fingerprint and x_device_fingerprint:
-        if not secrets.compare_digest(str(token_fingerprint), str(x_device_fingerprint)):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Device binding mismatch: token is bound to a different client device.",
-            )
+    if not x_device_fingerprint:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-Device-Fingerprint header required for device-bound sessions.",
+        )
+    if not token_fingerprint or not secrets.compare_digest(
+        str(token_fingerprint), str(x_device_fingerprint)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Device binding mismatch: token is bound to a different client device.",
+        )
 
+    claims["_raw_token"] = credentials.credentials
     return claims
+
+
+def assert_application_scope(claims: Dict[str, Any], application_id: str) -> None:
+    """Ensure the JWT is scoped to the application resource being accessed."""
+    token_app = claims.get("application_id")
+    if token_app and str(token_app) != str(application_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token is not authorized for this application session.",
+        )
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):

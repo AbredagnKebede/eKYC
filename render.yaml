@@ -1,0 +1,56 @@
+# Render Blueprint — free-tier tester deployment
+# https://dashboard.render.com/blueprints
+#
+# Creates:
+#   - 1 free web service (API + workers + sandboxes in one container)
+#   - 1 free Postgres (expires after 30 days on free plan)
+#   - 1 free Key Value (Redis-compatible)
+
+services:
+  - type: web
+    name: ekyc-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.cloud
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ekyc-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: ekyc-kv
+          type: keyvalue
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: HMAC_SALT_KEY
+        generateValue: true
+      - key: AES_MASTER_KEY
+        value: "01234567890123456789012345678901"
+      - key: FAYDA_API_KEY
+        value: dev-fayda-key
+      - key: BANK_API_KEY
+        value: dev-bank-key
+      - key: FAYDA_SANDBOX_URL
+        value: http://127.0.0.1:8081/fayda/v2
+      - key: BANK_CBS_SANDBOX_URL
+        value: http://127.0.0.1:8082/cbs/v1
+      - key: CLEANUP_INTERVAL_SECONDS
+        value: "120"
+      - key: PUBLIC_API_BASE
+        sync: false
+
+  - type: keyvalue
+    name: ekyc-kv
+    plan: free
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []  # private network only (web service connects internally)
+
+databases:
+  - name: ekyc-db
+    plan: free
+    databaseName: ekyc_db
+    user: ekyc

@@ -3,9 +3,12 @@ import os
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Dict
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from src.infrastructure.redis import get_redis_client
@@ -187,6 +190,21 @@ def create_app() -> FastAPI:
     # 6. Mount API Routers
     app.include_router(banks_router)
     app.include_router(applications_router)
+
+    # 7. Tester landing page + APK downloads
+    static_root = Path(__file__).resolve().parents[2] / "static"
+    releases_dir = static_root / "releases"
+    releases_dir.mkdir(parents=True, exist_ok=True)
+    if static_root.exists():
+        app.mount("/static", StaticFiles(directory=str(static_root)), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def tester_home() -> FileResponse:
+        return FileResponse(static_root / "testers" / "index.html")
+
+    @app.get("/testers", include_in_schema=False)
+    async def tester_page() -> FileResponse:
+        return FileResponse(static_root / "testers" / "index.html")
 
     return app
 
