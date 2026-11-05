@@ -9,6 +9,7 @@ import 'package:signature/signature.dart';
 import 'package:uuid/uuid.dart';
 
 import 'api/ekyc_api.dart';
+import 'l10n/strings.dart';
 import 'theme.dart';
 
 const kDefaultApiBase = String.fromEnvironment(
@@ -64,6 +65,15 @@ class _OnboardingShellState extends State<OnboardingShell> {
   bool busy = false;
   String? error;
   String bankQuery = '';
+  String locale = 'en';
+  String? userRef;
+  bool showPassport = false;
+  List<Map<String, dynamic>> myApps = [];
+  String selectedTier = 'standard';
+  List<String> availableTiers = const ['standard'];
+  Map<String, dynamic>? selectedBankSchema;
+
+  S get s => S(locale);
 
   List<Map<String, dynamic>> banks = [];
   String? bankId;
@@ -97,6 +107,8 @@ class _OnboardingShellState extends State<OnboardingShell> {
   Future<void> _bootstrap() async {
     final prefs = await SharedPreferences.getInstance();
     apiBase = prefs.getString('api_base') ?? kDefaultApiBase;
+    locale = prefs.getString('locale') ?? 'en';
+    userRef = prefs.getString('user_ref');
     var fp = prefs.getString('device_fp');
     if (fp == null || fp.isEmpty) {
       fp = sha256.convert(utf8.encode('dev-${const Uuid().v4()}')).toString().substring(0, 32);
@@ -104,7 +116,82 @@ class _OnboardingShellState extends State<OnboardingShell> {
     }
     deviceFp = fp;
     api = EkycApi(baseUrl: apiBase, deviceFingerprint: fp);
+    final savedToken = prefs.getString('token');
+    if (savedToken != null && savedToken.isNotEmpty) {
+      api.token = savedToken;
+    }
+    if (userRef != null && userRef!.isNotEmpty) {
+      try {
+        await api.openDeviceSession(userRef!);
+        await prefs.setString('token', api.token ?? '');
+        await _refreshPassport();
+        showPassport = myApps.isNotEmpty;
+      } catch (_) {
+        // cold start without server is fine
+      }
+    }
     setState(() {});
+  }
+
+  Future<void> _persistSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (userRef != null) await prefs.setString('user_ref', userRef!);
+    if (api.token != null) await prefs.setString('token', api.token!);
+    await prefs.setString('locale', locale);
+  }
+
+  Future<void> _refreshPassport() async {
+    if (userRef == null) return;
+    myApps = await api.listApplications();
+  }
+
+  StepId _stepFromResume(String resume) {
+    switch (resume) {
+      case 'consent':
+        return StepId.consent;
+      case 'fayda':
+        return StepId.fayda;
+      case 'otp':
+        return StepId.otp;
+      case 'liveness':
+        return StepId.liveness;
+      case 'fields':
+        return StepId.fields;
+      case 'sign':
+        return StepId.sign;
+      case 'status':
+        return StepId.status;
+      case 'done':
+        return StepId.done;
+      case 'expired':
+        return StepId.done;
+      default:
+        return StepId.welcome;
+    }
+  }
+
+  Future<void> _resumeApp(Map<String, dynamic> row) async {
+    await _run(() async {
+      appId = row['application_id']?.toString();
+      bankId = row['bank_id']?.toString();
+      bankName = bankId;
+      selectedTier = row['tier']?.toString() ?? 'standard';
+      accountNumber = row['account_number']?.toString();
+      statusText = row['status']?.toString();
+      final resume = row['resume_step']?.toString() ?? 'welcome';
+      if (resume == 'expired') {
+        throw Exception(s.t('error.expired'));
+      }
+      showPassport = false;
+      step = _stepFromResume(resume);
+      if (step == StepId.status) {
+        await _pollStatus();
+      }
+      if (step == StepId.done && statusText == 'ACCOUNT_OPENED' && accountNumber != null) {
+        // stay on done-like status activate path
+        step = StepId.status;
+      }
+    });
   }
 
   Future<void> _saveApiBase(String value) async {
@@ -123,8 +210,12 @@ class _OnboardingShellState extends State<OnboardingShell> {
     });
     try {
       await action();
+      await _persistSession();
     } on EkycApiException catch (e) {
-      setState(() => error = e.message);
+      final msg = (e.statusCode == 429 || e.statusCode == 410)
+          ? s.t('otp.lockout')
+          : e.message;
+      setState(() => error = msg);
     } catch (e) {
       setState(() => error = e.toString());
     } finally {
@@ -146,13 +237,66 @@ class _OnboardingShellState extends State<OnboardingShell> {
     await _run(() async {
       bankId = bank['bank_id'] as String;
       bankName = bank['bank_name'] as String? ?? bankId;
+      userRef ??= "usr_${deviceFp!.substring(0, 10)}";
+      final tiers = (bank['supported_tiers'] as List?)?.map((e) => e.toString()).toList() ?? ['standard'];
+      availableTiers = tiers.isEmpty ? ['standard'] : tiers;
+      selectedTier = availableTiers.contains('standard') ? 'standard' : availableTiers.first;
+      final byTier = bank['schemas_by_tier'];
+      if (byTier is Map && byTier[selectedTier] is Map) {
+        selectedBankSchema = Map<String, dynamic>.from(byTier[selectedTier] as Map);
+      } else {
+        selectedBankSchema = bank['dynamic_schema'] is Map
+            ? Map<String, dynamic>.from(bank['dynamic_schema'] as Map)
+            : null;
+      }
+      setState(() => step = StepId.consent);
+      // Tier picked on next micro-step via dialog before create
+      final tier = await _pickTier();
+      if (tier == null) {
+        setState(() => step = StepId.bank);
+        return;
+      }
+      selectedTier = tier;
       final created = await api.createApplication(
-        userRef: 'usr_${deviceFp!.substring(0, 10)}',
+        userRef: userRef!,
         bankId: bankId!,
+        tier: selectedTier,
       );
       appId = created['application_id'] as String;
       setState(() => step = StepId.consent);
     });
+  }
+
+  Future<String?> _pickTier() async {
+    if (!mounted) return selectedTier;
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: EkycColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(s.t('tier.title'), style: Theme.of(ctx).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                for (final t in availableTiers)
+                  ListTile(
+                    title: Text(t),
+                    trailing: t == selectedTier ? const Icon(Icons.check, color: EkycColors.teal) : null,
+                    onTap: () => Navigator.pop(ctx, t),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _consent(bool accepted) async {
@@ -230,7 +374,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
   }
 
   Future<void> _pollStatus() async {
-    for (var i = 0; i < 40; i++) {
+    for (var i = 0; i < 90; i++) {
       final data = await api.getApplication(appId!);
       statusText = data['status'] as String?;
       accountNumber = data['account_number'] as String?;
@@ -239,9 +383,13 @@ class _OnboardingShellState extends State<OnboardingShell> {
       if (statusText == 'BANK_REJECTED') {
         throw Exception('Bank rejected the application');
       }
+      // PENDING_REVIEW / SUBMITTED_TO_BANK: keep waiting for webhook or ops
       await Future<void>.delayed(const Duration(milliseconds: 700));
     }
-    throw Exception('Timed out waiting for bank account issuance');
+    // Leave user on status screen instead of hard-failing — Passport can resume.
+    setState(() {
+      error = s.t('status.review');
+    });
   }
 
   Future<void> _activate() async {
@@ -249,7 +397,11 @@ class _OnboardingShellState extends State<OnboardingShell> {
       final res = await api.activate(appId!);
       activationMsg = res['activation_instructions'] as String?;
       statusText = res['status'] as String?;
-      setState(() => step = StepId.done);
+      await _refreshPassport();
+      setState(() {
+        step = StepId.done;
+        showPassport = true;
+      });
     });
   }
 
@@ -305,23 +457,48 @@ class _OnboardingShellState extends State<OnboardingShell> {
               child: Image.asset('assets/icon/app_icon.png', width: 28, height: 28, fit: BoxFit.cover),
             ),
             const SizedBox(width: 10),
-            const Text('Fayda Onboard'),
+            Text(s.t('brand')),
           ],
         ),
         actions: [
+          PopupMenuButton<String>(
+            tooltip: 'Language',
+            initialValue: locale,
+            onSelected: (v) async {
+              setState(() => locale = v);
+              await _persistSession();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'en', child: Text('English')),
+              const PopupMenuItem(value: 'am', child: Text('አማርኛ')),
+              const PopupMenuItem(value: 'om', child: Text('Afaan Oromoo')),
+            ],
+            icon: const Icon(Icons.translate_rounded, size: 22),
+          ),
+          if (myApps.isNotEmpty)
+            IconButton(
+              tooltip: 'Passport',
+              onPressed: () async {
+                await _refreshPassport();
+                setState(() => showPassport = true);
+              },
+              icon: const Icon(Icons.account_balance_wallet_outlined, size: 22),
+            ),
           IconButton(
             tooltip: 'API settings',
             onPressed: () => _openSettings(context),
             icon: const Icon(Icons.tune_rounded, size: 22),
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(18),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: _StepRail(index: progressIndex, total: 10),
-          ),
-        ),
+        bottom: showPassport
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(18),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: _StepRail(index: progressIndex, total: 10),
+                ),
+              ),
       ),
       body: SafeArea(
         child: Column(
@@ -344,9 +521,9 @@ class _OnboardingShellState extends State<OnboardingShell> {
                 switchInCurve: Curves.easeOutCubic,
                 switchOutCurve: Curves.easeInCubic,
                 child: Padding(
-                  key: ValueKey(step),
+                  key: ValueKey('${showPassport}_$step'),
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                  child: _buildStep(context),
+                  child: showPassport ? _buildPassport(context) : _buildStep(context),
                 ),
               ),
             ),
@@ -354,6 +531,94 @@ class _OnboardingShellState extends State<OnboardingShell> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPassport(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(s.t('passport.title'), style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 6),
+        Text(s.t('passport.subtitle'), style: Theme.of(context).textTheme.bodyMedium),
+        const SizedBox(height: 14),
+        Expanded(
+          child: myApps.isEmpty
+              ? Center(child: Text(s.t('passport.empty')))
+              : ListView.separated(
+                  itemCount: myApps.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, i) {
+                    final row = myApps[i];
+                    final status = row['status']?.toString() ?? '';
+                    final opened = status == 'ACCOUNT_OPENED' || status == 'ACTIVATED';
+                    final expired = status == 'EXPIRED';
+                    final label = opened
+                        ? s.t('passport.opened')
+                        : expired
+                            ? s.t('passport.expired')
+                            : s.t('passport.processing');
+                    return Material(
+                      color: EkycColors.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: expired || busy ? null : () => _resumeApp(row),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: EkycColors.line),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      row['bank_id']?.toString() ?? '',
+                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '$label · ${row['tier']} · $status',
+                                      style: const TextStyle(color: EkycColors.muted, fontSize: 12.5),
+                                    ),
+                                    if (row['account_number'] != null)
+                                      Text(
+                                        row['account_number'].toString(),
+                                        style: const TextStyle(
+                                          color: EkycColors.navy,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              if (!expired)
+                                Text(s.t('passport.resume'), style: const TextStyle(color: EkycColors.teal)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        FilledButton(
+          onPressed: busy
+              ? null
+              : () {
+                  setState(() {
+                    showPassport = false;
+                    step = StepId.welcome;
+                  });
+                },
+          child: Text(s.t('passport.open_bank')),
+        ),
+      ],
     );
   }
 
@@ -413,15 +678,19 @@ class _OnboardingShellState extends State<OnboardingShell> {
           account: accountNumber,
           bankName: bankName,
           message: activationMsg,
-          onRestart: () => setState(() {
-            step = StepId.welcome;
-            appId = null;
-            accountNumber = null;
-            activationMsg = null;
-            error = null;
-            bankQuery = '';
-            sigCtrl.clear();
-          }),
+          onRestart: () async {
+            await _refreshPassport();
+            setState(() {
+              showPassport = true;
+              step = StepId.welcome;
+              appId = null;
+              accountNumber = null;
+              activationMsg = null;
+              error = null;
+              bankQuery = '';
+              sigCtrl.clear();
+            });
+          },
         );
     }
   }
