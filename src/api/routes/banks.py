@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -19,6 +19,8 @@ def get_bank_adapter_service() -> BankAdapterService:
 class BankMetadataResponse(BaseModel):
     bank_id: str = Field(..., description="Unique partner bank identifier")
     bank_name: str = Field(..., description="Human-readable partner bank name")
+    short_code: Optional[str] = Field(default=None, description="Bank short code / ticker")
+    hq_city: Optional[str] = Field(default=None, description="Headquarters city")
     operational_status: str = Field(
         default="OPERATIONAL", description="Bank CBS integration operational health"
     )
@@ -38,6 +40,8 @@ async def list_partner_banks(
         BankMetadataResponse(
             bank_id=b["bank_id"],
             bank_name=b["bank_name"],
+            short_code=b.get("short_code"),
+            hq_city=b.get("hq_city"),
             operational_status="OPERATIONAL",
             supported_tiers=b["supported_tiers"],
             dynamic_schema=b["dynamic_schema"],
@@ -57,6 +61,8 @@ async def get_partner_bank(
         return BankMetadataResponse(
             bank_id=adapter.bank_id,
             bank_name=adapter.bank_name,
+            short_code=getattr(adapter, "short_code", None),
+            hq_city=getattr(adapter, "hq_city", None),
             operational_status="OPERATIONAL",
             supported_tiers=adapter.supported_tiers,
             dynamic_schema=adapter.get_dynamic_schema(),
@@ -87,6 +93,8 @@ async def update_partner_bank_schema(
         return BankMetadataResponse(
             bank_id=adapter.bank_id,
             bank_name=adapter.bank_name,
+            short_code=getattr(adapter, "short_code", None),
+            hq_city=getattr(adapter, "hq_city", None),
             operational_status="OPERATIONAL",
             supported_tiers=adapter.supported_tiers,
             dynamic_schema=adapter.get_dynamic_schema(),

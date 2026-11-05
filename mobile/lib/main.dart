@@ -259,7 +259,8 @@ class _OnboardingShellState extends State<OnboardingShell> {
     return banks.where((b) {
       final name = (b['bank_name'] as String? ?? '').toLowerCase();
       final id = (b['bank_id'] as String? ?? '').toLowerCase();
-      return name.contains(q) || id.contains(q);
+      final code = (b['short_code'] as String? ?? '').toLowerCase();
+      return name.contains(q) || id.contains(q) || code.contains(q);
     }).toList();
   }
 
@@ -296,7 +297,17 @@ class _OnboardingShellState extends State<OnboardingShell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Fayda Onboard'),
+        titleSpacing: 16,
+        title: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset('assets/icon/app_icon.png', width: 28, height: 28, fit: BoxFit.cover),
+            ),
+            const SizedBox(width: 10),
+            const Text('Fayda Onboard'),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'API settings',
@@ -305,12 +316,10 @@ class _OnboardingShellState extends State<OnboardingShell> {
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(3),
-          child: LinearProgressIndicator(
-            value: (progressIndex + 1) / 10,
-            minHeight: 3,
-            backgroundColor: EkycColors.line,
-            color: EkycColors.teal,
+          preferredSize: const Size.fromHeight(18),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: _StepRail(index: progressIndex, total: 10),
           ),
         ),
       ),
@@ -324,14 +333,16 @@ class _OnboardingShellState extends State<OnboardingShell> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: EkycColors.dangerSoft,
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: EkycColors.danger.withValues(alpha: 0.25)),
                 ),
                 child: Text(error!, style: const TextStyle(color: EkycColors.danger, height: 1.35)),
               ),
             Expanded(
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
+                duration: const Duration(milliseconds: 260),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
                 child: Padding(
                   key: ValueKey(step),
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
@@ -460,6 +471,31 @@ class _OnboardingShellState extends State<OnboardingShell> {
   }
 }
 
+class _StepRail extends StatelessWidget {
+  const _StepRail({required this.index, required this.total});
+  final int index;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: List.generate(total, (i) {
+        final active = i <= index;
+        return Expanded(
+          child: Container(
+            height: 3,
+            margin: EdgeInsets.only(right: i == total - 1 ? 0 : 3),
+            decoration: BoxDecoration(
+              color: active ? EkycColors.teal : EkycColors.line,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+}
+
 class _Welcome extends StatelessWidget {
   const _Welcome({required this.onStart});
   final VoidCallback? onStart;
@@ -469,26 +505,80 @@ class _Welcome extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Spacer(flex: 2),
-        Container(
-          width: 56,
-          height: 56,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: EkycColors.navy,
-            borderRadius: BorderRadius.circular(14),
+        Expanded(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [EkycColors.navyDeep, EkycColors.navy, Color(0xFF123A52)],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: -40,
+                top: -30,
+                child: Container(
+                  width: 180,
+                  height: 180,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: EkycColors.tealBright.withValues(alpha: 0.12),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: -20,
+                bottom: 40,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: EkycColors.gold.withValues(alpha: 0.10),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(22, 28, 22, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.asset('assets/icon/app_icon.png', width: 64, height: 64, fit: BoxFit.cover),
+                    ),
+                    const Spacer(),
+                    Text(
+                      'Fayda Onboard',
+                      style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                            color: Colors.white,
+                            fontSize: 36,
+                          ),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Open a commercial bank account with Ethiopia’s national ID — verify once, submit from your phone.',
+                      style: TextStyle(color: Color(0xFFC9D4E0), height: 1.5, fontSize: 16),
+                    ),
+                    const SizedBox(height: 22),
+                    const Text(
+                      '22 partner banks  ·  VeriFayda OTP  ·  Branch-free',
+                      style: TextStyle(color: Color(0xFF8FA3B8), fontSize: 13, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          child: const Icon(Icons.verified_user_outlined, color: Colors.white, size: 28),
         ),
-        const SizedBox(height: 28),
-        Text('Open a bank account\nwith Fayda ID', style: Theme.of(context).textTheme.displaySmall),
-        const SizedBox(height: 14),
-        const Text(
-          'Verify once with Ethiopia’s national ID, then submit a completed application to your chosen commercial bank — without a branch visit.',
-          style: TextStyle(color: EkycColors.muted, height: 1.5, fontSize: 16),
-        ),
-        const Spacer(flex: 3),
-        FilledButton(onPressed: onStart, child: const Text('Choose a bank')),
+        const SizedBox(height: 18),
+        FilledButton(onPressed: onStart, child: const Text('Choose your bank')),
         const SizedBox(height: 8),
       ],
     );
@@ -512,43 +602,98 @@ class _BankList extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Partner banks', style: Theme.of(context).textTheme.headlineMedium),
+        Text('Choose a bank', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 6),
-        Text('${banks.length} banks available', style: Theme.of(context).textTheme.bodyMedium),
+        Text(
+          banks.isEmpty ? 'Loading partner banks…' : '${banks.length} Ethiopian commercial banks',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
         const SizedBox(height: 14),
         TextField(
           onChanged: onQuery,
           decoration: const InputDecoration(
-            hintText: 'Search banks',
+            hintText: 'Search by name or code',
             prefixIcon: Icon(Icons.search, size: 20),
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         Expanded(
-          child: ListView.separated(
-            itemCount: banks.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, i) {
-              final b = banks[i];
-              final name = b['bank_name']?.toString() ?? '';
-              final initials = name.isEmpty
-                  ? '?'
-                  : name.split(' ').where((w) => w.isNotEmpty).take(2).map((w) => w[0]).join().toUpperCase();
-              final tiers = (b['supported_tiers'] as List?)?.join(' · ') ?? '';
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(vertical: 6),
-                leading: CircleAvatar(
-                  backgroundColor: EkycColors.tealSoft,
-                  foregroundColor: EkycColors.teal,
-                  child: Text(initials, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+          child: banks.isEmpty
+              ? const Center(child: CircularProgressIndicator(color: EkycColors.teal))
+              : ListView.separated(
+                  itemCount: banks.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, i) {
+                    final b = banks[i];
+                    final name = b['bank_name']?.toString() ?? '';
+                    final code = (b['short_code']?.toString().isNotEmpty == true)
+                        ? b['short_code'].toString()
+                        : (b['bank_id']?.toString() ?? '')
+                            .replaceFirst('bank_', '')
+                            .toUpperCase();
+                    final city = b['hq_city']?.toString() ?? 'Ethiopia';
+                    final hue = (name.hashCode.abs() % 40) + 170;
+                    return Material(
+                      color: EkycColors.surface,
+                      borderRadius: BorderRadius.circular(14),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(14),
+                        onTap: onSelect == null ? null : () => onSelect!(b),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: EkycColors.line),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 44,
+                                height: 44,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: HSLColor.fromAHSL(1, hue.toDouble(), 0.28, 0.92).toColor(),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  code.length > 4 ? code.substring(0, 4) : code,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11,
+                                    letterSpacing: 0.3,
+                                    color: HSLColor.fromAHSL(1, hue.toDouble(), 0.45, 0.32).toColor(),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: EkycColors.ink,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '$city · live sandbox',
+                                      style: const TextStyle(color: EkycColors.muted, fontSize: 12.5),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: EkycColors.muted),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
-                title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, color: EkycColors.ink)),
-                subtitle: Text(tiers, maxLines: 1, overflow: TextOverflow.ellipsis),
-                trailing: const Icon(Icons.chevron_right, color: EkycColors.muted),
-                onTap: onSelect == null ? null : () => onSelect!(b),
-              );
-            },
-          ),
         ),
       ],
     );

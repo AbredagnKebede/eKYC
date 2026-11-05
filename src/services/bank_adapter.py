@@ -169,6 +169,8 @@ class BankAdapterService:
             {
                 "bank_id": adapter.bank_id,
                 "bank_name": adapter.bank_name,
+                "short_code": getattr(adapter, "short_code", None),
+                "hq_city": getattr(adapter, "hq_city", None),
                 "supported_tiers": adapter.supported_tiers,
                 "dynamic_schema": adapter.get_dynamic_schema(),
             }
