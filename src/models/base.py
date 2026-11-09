@@ -82,6 +82,11 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_models(retries: int = 5, delay: float = 1.0) -> None:
     """Create all database tables defined in metadata with connection retry."""
+    # Ensure all model modules register tables on Base.metadata before create_all.
+    import src.models.application  # noqa: F401
+    import src.models.audit  # noqa: F401
+    import src.models.bank_portal  # noqa: F401
+
     for attempt in range(retries):
         try:
             async with engine.begin() as conn:

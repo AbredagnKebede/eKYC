@@ -30,8 +30,10 @@ class ApplicationStatus(str, enum.Enum):
     LIVENESS_PASSED = "LIVENESS_PASSED"
     LIVENESS_FAILED = "LIVENESS_FAILED"
     DATA_COMPLETE = "DATA_COMPLETE"
+    AWAITING_BANK_OUTBOUND = "AWAITING_BANK_OUTBOUND"
     SUBMITTED_TO_BANK = "SUBMITTED_TO_BANK"
     BANK_ACCEPTED = "BANK_ACCEPTED"
+    CBS_PENDING_BANK_RELEASE = "CBS_PENDING_BANK_RELEASE"
     BANK_REJECTED = "BANK_REJECTED"
     ACCOUNT_OPENED = "ACCOUNT_OPENED"
     ACTIVATED = "ACTIVATED"
@@ -56,8 +58,10 @@ class Application(Base):
         default=uuid.uuid4,
     )
     user_ref: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    fayda_ref_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     bank_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     tier: Mapped[str] = mapped_column(String(32), default="standard", nullable=False)
+    bank_edited_fields: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     status: Mapped[ApplicationStatus] = mapped_column(
         Enum(ApplicationStatus, name="application_status_enum"),
         default=ApplicationStatus.DRAFT,

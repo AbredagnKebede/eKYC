@@ -71,6 +71,12 @@ VALID_TRANSITIONS: Dict[ApplicationStatus, Set[ApplicationStatus]] = {
     },
     ApplicationStatus.DATA_COMPLETE: {
         ApplicationStatus.SUBMITTED_TO_BANK,
+        ApplicationStatus.AWAITING_BANK_OUTBOUND,
+        ApplicationStatus.CANCELLED,
+        ApplicationStatus.EXPIRED,
+    },
+    ApplicationStatus.AWAITING_BANK_OUTBOUND: {
+        ApplicationStatus.SUBMITTED_TO_BANK,
         ApplicationStatus.CANCELLED,
         ApplicationStatus.EXPIRED,
     },
@@ -78,8 +84,14 @@ VALID_TRANSITIONS: Dict[ApplicationStatus, Set[ApplicationStatus]] = {
         ApplicationStatus.BANK_ACCEPTED,
         ApplicationStatus.BANK_REJECTED,
         ApplicationStatus.ACCOUNT_OPENED,
+        ApplicationStatus.CBS_PENDING_BANK_RELEASE,
     },
     ApplicationStatus.BANK_ACCEPTED: {
+        ApplicationStatus.ACCOUNT_OPENED,
+        ApplicationStatus.BANK_REJECTED,
+        ApplicationStatus.CBS_PENDING_BANK_RELEASE,
+    },
+    ApplicationStatus.CBS_PENDING_BANK_RELEASE: {
         ApplicationStatus.ACCOUNT_OPENED,
         ApplicationStatus.BANK_REJECTED,
     },
