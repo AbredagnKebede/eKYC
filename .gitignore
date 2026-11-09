@@ -50,8 +50,8 @@ Thumbs.db
 .vscode/
 *.swp
 
-# Cursor / local agent tooling (keep skills via .cursor/skills if committed intentionally)
-.cursor/projects/
+# Cursor local IDE/agent config (never ship)
+.cursor/
 
 # VibeArch / agent pipeline scaffolding (local only)
 .agents/
