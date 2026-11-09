@@ -12,16 +12,28 @@ import type { AuditItem, QueueItem, StaffItem } from '@/lib/api'
 
 type Tab = 'dashboard' | 'outbound' | 'inbound' | 'settings' | 'staff' | 'audit'
 
-const BANKS = [
-  'bank_cbe',
-  'bank_awash',
-  'bank_abyssinia',
-  'bank_dashen',
-  'bank_wegagen',
-  'bank_hibret',
-  'bank_coop',
-  'bank_nib',
+const BANKS: { id: string; name: string }[] = [
+  { id: 'bank_cbe', name: 'Commercial Bank of Ethiopia' },
+  { id: 'bank_awash', name: 'Awash Bank' },
+  { id: 'bank_abyssinia', name: 'Bank of Abyssinia' },
+  { id: 'bank_dashen', name: 'Dashen Bank' },
+  { id: 'bank_wegagen', name: 'Wegagen Bank' },
+  { id: 'bank_hibret', name: 'Hibret Bank' },
+  { id: 'bank_coop', name: 'Cooperative Bank of Oromia' },
+  { id: 'bank_nib', name: 'NIB International Bank' },
 ]
+
+function bankLabel(id: string) {
+  return BANKS.find((b) => b.id === id)?.name ?? id
+}
+
+function shortId(id: string) {
+  return id.replace(/-/g, '').slice(0, 8)
+}
+
+function roleLabel(role: string) {
+  return role.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase())
+}
 
 export default function PortalApp() {
   const [meta, setMeta] = useState<ReturnType<typeof loadMeta>>(null)
@@ -31,9 +43,9 @@ export default function PortalApp() {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const [email, setEmail] = useState('super@cbe.portal.local')
-  const [password, setPassword] = useState('ChangeMeBankPortal1!')
-  const [bankId, setBankId] = useState('bank_cbe')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [bankId, setBankId] = useState('')
 
   const [dash, setDash] = useState<{
     outbound_count: number
@@ -48,7 +60,7 @@ export default function PortalApp() {
   const [staff, setStaff] = useState<StaffItem[]>([])
   const [audit, setAudit] = useState<AuditItem[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
-  const [invitePassword, setInvitePassword] = useState('TempPass123!')
+  const [invitePassword, setInvitePassword] = useState('')
   const [inviteRole, setInviteRole] = useState('EMPLOYEE')
 
   useEffect(() => {
@@ -94,10 +106,14 @@ export default function PortalApp() {
 
   async function onLogin(e: FormEvent) {
     e.preventDefault()
+    if (!bankId || !email.trim() || !password) {
+      setError('Choose your bank and enter email and password.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
-      const res = await portalApi.login(email, password, bankId)
+      const res = await portalApi.login(email.trim(), password, bankId)
       const next = {
         token: res.token,
         bank_id: res.bank_id,
@@ -106,6 +122,7 @@ export default function PortalApp() {
       }
       saveMeta(next)
       setMeta(next)
+      setPassword('')
       setTab('dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -118,95 +135,135 @@ export default function PortalApp() {
     clearMeta()
     setMeta(null)
     setDash(null)
+    setPassword('')
+    setNotice(null)
+    setError(null)
+  }
+
+  function go(next: Tab) {
+    setNotice(null)
+    setError(null)
+    setTab(next)
   }
 
   if (!hydrated) {
-    return <div className="app-shell">Loading…</div>
+    return (
+      <div className="app-shell">
+        <div className="loading-shell">Loading portal…</div>
+      </div>
+    )
   }
 
   if (!meta) {
     return (
       <div className="app-shell">
-        <div className="brand-mark">Fayda Bank Portal</div>
-        <p className="brand-sub">
-          Per-bank Fast Forward gates, outbound and inbound queues, and staff RBAC —
-          isolated to your institution.
-        </p>
-        <form className="login-panel" onSubmit={onLogin}>
-          <label htmlFor="bank">Bank</label>
-          <select id="bank" value={bankId} onChange={(e) => setBankId(e.target.value)}>
-            {BANKS.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="email">Email</label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="username"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-          {error && <p className="err">{error}</p>}
-          <div style={{ marginTop: '1.25rem' }}>
-            <button className="btn" type="submit" disabled={busy}>
+        <div className="login-layout">
+          <div className="login-brand">
+            <div className="eyebrow">Fayda Onboard</div>
+            <h1>Bank Portal</h1>
+            <p>
+              Review outbound and inbound applications, control Fast Forward, and manage staff —
+              scoped to your bank only.
+            </p>
+          </div>
+
+          <form className="login-panel" onSubmit={onLogin} autoComplete="on">
+            <h2>Staff sign in</h2>
+            <p className="hint">Use the credentials issued by your bank administrator.</p>
+
+            <div className="field">
+              <label htmlFor="bank">Bank</label>
+              <select
+                id="bank"
+                value={bankId}
+                onChange={(e) => setBankId(e.target.value)}
+                required
+                autoComplete="organization"
+              >
+                <option value="" disabled>
+                  Select your bank
+                </option>
+                {BANKS.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="field">
+              <label htmlFor="email">Work email</label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@bank.et"
+                required
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                minLength={8}
+              />
+            </div>
+
+            {error && <p className="err">{error}</p>}
+
+            <button className="btn primary-accent btn-block" type="submit" disabled={busy}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
     )
   }
 
+  const tabs: [Tab, string][] = [
+    ['dashboard', 'Home'],
+    ['outbound', 'Outbound'],
+    ['inbound', 'Inbound'],
+    ['settings', 'Settings'],
+    ...(canManageStaff
+      ? ([
+          ['staff', 'Staff'],
+          ['audit', 'Audit'],
+        ] as [Tab, string][])
+      : []),
+  ]
+
   return (
     <div className="app-shell">
-      <div className="topbar">
+      <header className="topbar">
         <div>
-          <div className="brand-mark">Fayda Bank Portal</div>
-          <p className="brand-sub">
-            {meta.bank_id} · {meta.email} · <span className="pill">{meta.role}</span>
-          </p>
+          <h1 className="brand-mark">Fayda Bank Portal</h1>
+          <div className="topbar-meta">
+            <span className="pill muted">{bankLabel(meta.bank_id)}</span>
+            <span className="pill">{roleLabel(meta.role)}</span>
+          </div>
         </div>
         <button className="btn secondary" type="button" onClick={logout}>
           Sign out
         </button>
-      </div>
+      </header>
 
-      <nav className="nav">
-        {(
-          [
-            ['dashboard', 'Dashboard'],
-            ['outbound', 'Outbound'],
-            ['inbound', 'Inbound'],
-            ['settings', 'Settings'],
-            ...(canManageStaff
-              ? ([
-                  ['staff', 'Staff'],
-                  ['audit', 'Audit'],
-                ] as const)
-              : []),
-          ] as [Tab, string][]
-        ).map(([id, label]) => (
+      <nav className="nav" aria-label="Portal sections">
+        {tabs.map(([id, label]) => (
           <button
             key={id}
             type="button"
             className={tab === id ? 'active' : ''}
-            onClick={() => {
-              setNotice(null)
-              setTab(id)
-            }}
+            onClick={() => go(id)}
           >
             {label}
           </button>
@@ -216,204 +273,365 @@ export default function PortalApp() {
       {error && <p className="err">{error}</p>}
       {notice && <p className="ok">{notice}</p>}
 
-      {tab === 'dashboard' && dash && (
+      {tab === 'dashboard' && (
         <section>
-          <div className="metrics">
-            <div className="metric">
-              <div className="n">{dash.outbound_count}</div>
-              <div>Outbound queue</div>
-            </div>
-            <div className="metric">
-              <div className="n">{dash.inbound_count}</div>
-              <div>Inbound queue</div>
-            </div>
-            <div className="metric">
-              <div className="n">{dash.ff_outbound ? 'ON' : 'OFF'}</div>
-              <div>FF outbound</div>
-            </div>
-            <div className="metric">
-              <div className="n">{dash.ff_inbound ? 'ON' : 'OFF'}</div>
-              <div>FF inbound</div>
-            </div>
+          <div className="section-head">
+            <h2>Overview</h2>
+            <p>Queue depth and Fast Forward status for {bankLabel(meta.bank_id)}.</p>
           </div>
+
+          {dash ? (
+            <>
+              <div className="metrics">
+                <div className="metric">
+                  <div className="label">Waiting to send</div>
+                  <div className="n">{dash.outbound_count}</div>
+                </div>
+                <div className="metric">
+                  <div className="label">Waiting to release</div>
+                  <div className="n">{dash.inbound_count}</div>
+                </div>
+                <div className="metric">
+                  <div className="label">App → CBS</div>
+                  <div className={`n ${dash.ff_outbound ? 'on' : 'off'}`}>
+                    {dash.ff_outbound ? 'Auto' : 'Manual'}
+                  </div>
+                </div>
+                <div className="metric">
+                  <div className="label">CBS → App</div>
+                  <div className={`n ${dash.ff_inbound ? 'on' : 'off'}`}>
+                    {dash.ff_inbound ? 'Auto' : 'Manual'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="quick-actions">
+                <button type="button" className="quick-action" onClick={() => go('outbound')}>
+                  <strong>Outbound queue</strong>
+                  <span>
+                    {dash.outbound_count === 0
+                      ? 'Nothing waiting to send to CBS'
+                      : `${dash.outbound_count} application${dash.outbound_count === 1 ? '' : 's'} ready to send`}
+                  </span>
+                </button>
+                <button type="button" className="quick-action" onClick={() => go('inbound')}>
+                  <strong>Inbound queue</strong>
+                  <span>
+                    {dash.inbound_count === 0
+                      ? 'Nothing waiting for customer release'
+                      : `${dash.inbound_count} result${dash.inbound_count === 1 ? '' : 's'} to confirm`}
+                  </span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="empty">Loading overview…</p>
+          )}
         </section>
       )}
 
       {tab === 'outbound' && (
         <section>
-          <h2>Outbound queue</h2>
-          <p className="brand-sub">Held until staff send to CBS (ff_outbound OFF).</p>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Application</th>
-                <th>Tier</th>
-                <th>Updated</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {outbound.map((row) => (
-                <tr key={row.application_id}>
-                  <td>
-                    <code>{row.application_id.slice(0, 8)}</code>
-                    <div>{row.user_ref}</div>
-                  </td>
-                  <td>{row.tier}</td>
-                  <td>{new Date(row.updated_at).toLocaleString()}</td>
-                  <td>
-                    <button
-                      className="btn"
-                      type="button"
-                      disabled={busy}
-                      onClick={async () => {
-                        setBusy(true)
-                        setError(null)
-                        try {
-                          await portalApi.sendOutbound(row.application_id)
-                          setNotice('Sent to CBS')
-                          setOutbound(await portalApi.outbound())
-                        } catch (e) {
-                          setError(e instanceof Error ? e.message : String(e))
-                        } finally {
-                          setBusy(false)
-                        }
-                      }}
-                    >
-                      Send to CBS
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {outbound.length === 0 && (
+          <div className="section-head">
+            <h2>Outbound</h2>
+            <p>Applications held until staff send them to the bank CBS.</p>
+          </div>
+
+          <div className="queue-cards">
+            {outbound.length === 0 && <p className="empty">Queue is empty.</p>}
+            {outbound.map((row) => (
+              <article key={row.application_id} className="queue-card">
+                <div className="row">
+                  <span className="k">Application</span>
+                  <code>{shortId(row.application_id)}</code>
+                </div>
+                <div className="row">
+                  <span className="k">Tier</span>
+                  <span>{row.tier}</span>
+                </div>
+                <div className="row">
+                  <span className="k">Updated</span>
+                  <span>{new Date(row.updated_at).toLocaleString()}</span>
+                </div>
+                <div className="actions">
+                  <button
+                    className="btn primary-accent"
+                    type="button"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true)
+                      setError(null)
+                      try {
+                        await portalApi.sendOutbound(row.application_id)
+                        setNotice('Sent to CBS')
+                        setOutbound(await portalApi.outbound())
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : String(e))
+                      } finally {
+                        setBusy(false)
+                      }
+                    }}
+                  >
+                    Send to CBS
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="desktop-table table-wrap">
+            <table className="table">
+              <thead>
                 <tr>
-                  <td colSpan={4}>Queue empty</td>
+                  <th>Application</th>
+                  <th>Tier</th>
+                  <th>Updated</th>
+                  <th />
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {outbound.map((row) => (
+                  <tr key={row.application_id}>
+                    <td>
+                      <code>{shortId(row.application_id)}</code>
+                    </td>
+                    <td>{row.tier}</td>
+                    <td>{new Date(row.updated_at).toLocaleString()}</td>
+                    <td>
+                      <button
+                        className="btn primary-accent"
+                        type="button"
+                        disabled={busy}
+                        onClick={async () => {
+                          setBusy(true)
+                          setError(null)
+                          try {
+                            await portalApi.sendOutbound(row.application_id)
+                            setNotice('Sent to CBS')
+                            setOutbound(await portalApi.outbound())
+                          } catch (e) {
+                            setError(e instanceof Error ? e.message : String(e))
+                          } finally {
+                            setBusy(false)
+                          }
+                        }}
+                      >
+                        Send to CBS
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {outbound.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="empty">
+                      Queue is empty.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 
       {tab === 'inbound' && (
         <section>
-          <h2>Inbound queue</h2>
-          <p className="brand-sub">CBS results awaiting release to the customer app.</p>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Application</th>
-                <th>Account</th>
-                <th>Updated</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {inbound.map((row) => (
-                <tr key={row.application_id}>
-                  <td>
-                    <code>{row.application_id.slice(0, 8)}</code>
-                  </td>
-                  <td>{row.account_number || '—'}</td>
-                  <td>{new Date(row.updated_at).toLocaleString()}</td>
-                  <td style={{ display: 'flex', gap: '0.4rem' }}>
-                    <button
-                      className="btn"
-                      type="button"
-                      disabled={busy}
-                      onClick={async () => {
-                        setBusy(true)
-                        try {
-                          await portalApi.releaseInbound(row.application_id, {
-                            status: 'ACCOUNT_OPENED',
-                            account_number: row.account_number || undefined,
-                            bank_reference: row.bank_reference || undefined,
-                          })
-                          setNotice('Released to customer')
-                          setInbound(await portalApi.inbound())
-                        } catch (e) {
-                          setError(e instanceof Error ? e.message : String(e))
-                        } finally {
-                          setBusy(false)
-                        }
-                      }}
-                    >
-                      Release open
-                    </button>
-                    <button
-                      className="btn danger"
-                      type="button"
-                      disabled={busy}
-                      onClick={async () => {
-                        setBusy(true)
-                        try {
-                          await portalApi.releaseInbound(row.application_id, {
-                            status: 'BANK_REJECTED',
-                            reject_reason: 'Rejected by bank reviewer',
-                          })
-                          setNotice('Rejected and released')
-                          setInbound(await portalApi.inbound())
-                        } catch (e) {
-                          setError(e instanceof Error ? e.message : String(e))
-                        } finally {
-                          setBusy(false)
-                        }
-                      }}
-                    >
-                      Reject
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {inbound.length === 0 && (
+          <div className="section-head">
+            <h2>Inbound</h2>
+            <p>CBS results waiting for your confirmation before the customer sees them.</p>
+          </div>
+
+          <div className="queue-cards">
+            {inbound.length === 0 && <p className="empty">Queue is empty.</p>}
+            {inbound.map((row) => (
+              <article key={row.application_id} className="queue-card">
+                <div className="row">
+                  <span className="k">Application</span>
+                  <code>{shortId(row.application_id)}</code>
+                </div>
+                <div className="row">
+                  <span className="k">Account</span>
+                  <span>{row.account_number || '—'}</span>
+                </div>
+                <div className="row">
+                  <span className="k">Updated</span>
+                  <span>{new Date(row.updated_at).toLocaleString()}</span>
+                </div>
+                <div className="actions">
+                  <button
+                    className="btn primary-accent"
+                    type="button"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true)
+                      try {
+                        await portalApi.releaseInbound(row.application_id, {
+                          status: 'ACCOUNT_OPENED',
+                          account_number: row.account_number || undefined,
+                          bank_reference: row.bank_reference || undefined,
+                        })
+                        setNotice('Released to customer')
+                        setInbound(await portalApi.inbound())
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : String(e))
+                      } finally {
+                        setBusy(false)
+                      }
+                    }}
+                  >
+                    Release open
+                  </button>
+                  <button
+                    className="btn danger"
+                    type="button"
+                    disabled={busy}
+                    onClick={async () => {
+                      setBusy(true)
+                      try {
+                        await portalApi.releaseInbound(row.application_id, {
+                          status: 'BANK_REJECTED',
+                          reject_reason: 'Rejected by bank reviewer',
+                        })
+                        setNotice('Rejected and released')
+                        setInbound(await portalApi.inbound())
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : String(e))
+                      } finally {
+                        setBusy(false)
+                      }
+                    }}
+                  >
+                    Reject
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          <div className="desktop-table table-wrap">
+            <table className="table">
+              <thead>
                 <tr>
-                  <td colSpan={4}>Queue empty</td>
+                  <th>Application</th>
+                  <th>Account</th>
+                  <th>Updated</th>
+                  <th />
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {inbound.map((row) => (
+                  <tr key={row.application_id}>
+                    <td>
+                      <code>{shortId(row.application_id)}</code>
+                    </td>
+                    <td>{row.account_number || '—'}</td>
+                    <td>{new Date(row.updated_at).toLocaleString()}</td>
+                    <td>
+                      <div className="btn-row">
+                        <button
+                          className="btn primary-accent"
+                          type="button"
+                          disabled={busy}
+                          onClick={async () => {
+                            setBusy(true)
+                            try {
+                              await portalApi.releaseInbound(row.application_id, {
+                                status: 'ACCOUNT_OPENED',
+                                account_number: row.account_number || undefined,
+                                bank_reference: row.bank_reference || undefined,
+                              })
+                              setNotice('Released to customer')
+                              setInbound(await portalApi.inbound())
+                            } catch (e) {
+                              setError(e instanceof Error ? e.message : String(e))
+                            } finally {
+                              setBusy(false)
+                            }
+                          }}
+                        >
+                          Release open
+                        </button>
+                        <button
+                          className="btn danger"
+                          type="button"
+                          disabled={busy}
+                          onClick={async () => {
+                            setBusy(true)
+                            try {
+                              await portalApi.releaseInbound(row.application_id, {
+                                status: 'BANK_REJECTED',
+                                reject_reason: 'Rejected by bank reviewer',
+                              })
+                              setNotice('Rejected and released')
+                              setInbound(await portalApi.inbound())
+                            } catch (e) {
+                              setError(e instanceof Error ? e.message : String(e))
+                            } finally {
+                              setBusy(false)
+                            }
+                          }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {inbound.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="empty">
+                      Queue is empty.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 
       {tab === 'settings' && (
         <section className="stack">
-          <h2>Fast Forward</h2>
-          <p className="brand-sub">
-            Dual independent gates. Employees can view; only Admin / Super Admin can change.
-          </p>
+          <div className="section-head">
+            <h2>Fast Forward</h2>
+            <p>When automatic routing is off, items wait in the matching queue for staff action.</p>
+          </div>
+
           <div className="toggle-row">
             <div>
-              <strong>Outbound (App → CBS)</strong>
-              <div className="brand-sub">When OFF, submissions wait in outbound queue.</div>
+              <strong>Outbound — App → CBS</strong>
+              <div className="desc">Auto-send submissions, or hold them in Outbound.</div>
             </div>
-            <label>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={ffOut}
                 disabled={!canManageSettings || busy}
                 onChange={(e) => setFfOut(e.target.checked)}
-              />{' '}
-              {ffOut ? 'ON' : 'OFF'}
+              />
+              {ffOut ? 'Auto' : 'Manual'}
             </label>
           </div>
+
           <div className="toggle-row">
             <div>
-              <strong>Inbound (CBS → App)</strong>
-              <div className="brand-sub">When OFF, CBS results wait for staff release.</div>
+              <strong>Inbound — CBS → App</strong>
+              <div className="desc">Auto-release results, or hold them in Inbound.</div>
             </div>
-            <label>
+            <label className="switch">
               <input
                 type="checkbox"
                 checked={ffIn}
                 disabled={!canManageSettings || busy}
                 onChange={(e) => setFfIn(e.target.checked)}
-              />{' '}
-              {ffIn ? 'ON' : 'OFF'}
+              />
+              {ffIn ? 'Auto' : 'Manual'}
             </label>
           </div>
-          {canManageSettings && (
+
+          {canManageSettings ? (
             <button
-              className="btn"
+              className="btn primary-accent"
               type="button"
               disabled={busy}
               onClick={async () => {
@@ -436,27 +654,33 @@ export default function PortalApp() {
             >
               Save settings
             </button>
+          ) : (
+            <p className="hint">Only admins can change Fast Forward.</p>
           )}
         </section>
       )}
 
       {tab === 'staff' && canManageStaff && (
         <section>
-          <h2>Staff</h2>
+          <div className="section-head">
+            <h2>Staff</h2>
+            <p>Invite colleagues for this bank. Roles control who can change settings.</p>
+          </div>
+
           <form
-            className="stack"
-            style={{ marginBottom: '1.5rem' }}
+            className="invite-box stack"
             onSubmit={async (e) => {
               e.preventDefault()
               setBusy(true)
               try {
                 await portalApi.inviteStaff({
-                  email: inviteEmail,
+                  email: inviteEmail.trim(),
                   password: invitePassword,
                   role: inviteRole,
                 })
                 setInviteEmail('')
-                setNotice('Staff invited')
+                setInvitePassword('')
+                setNotice('Invitation created')
                 setStaff(await portalApi.staff())
               } catch (err) {
                 setError(err instanceof Error ? err.message : String(err))
@@ -465,98 +689,127 @@ export default function PortalApp() {
               }
             }}
           >
-            <input
-              placeholder="email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              required
-            />
-            <input
-              placeholder="temporary password"
-              value={invitePassword}
-              onChange={(e) => setInvitePassword(e.target.value)}
-              required
-            />
-            <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
-              <option value="EMPLOYEE">EMPLOYEE</option>
-              <option value="ADMIN">ADMIN</option>
-              {meta.role === 'SUPER_ADMIN' && <option value="SUPER_ADMIN">SUPER_ADMIN</option>}
-            </select>
-            <button className="btn" type="submit" disabled={busy}>
-              Invite
+            <div className="field">
+              <label htmlFor="invite-email">Email</label>
+              <input
+                id="invite-email"
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="colleague@bank.et"
+                required
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="invite-password">Temporary password</label>
+              <input
+                id="invite-password"
+                type="password"
+                value={invitePassword}
+                onChange={(e) => setInvitePassword(e.target.value)}
+                placeholder="At least 8 characters"
+                required
+                minLength={8}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="invite-role">Role</label>
+              <select
+                id="invite-role"
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value)}
+              >
+                <option value="EMPLOYEE">Employee</option>
+                <option value="ADMIN">Admin</option>
+                {meta.role === 'SUPER_ADMIN' && <option value="SUPER_ADMIN">Super admin</option>}
+              </select>
+            </div>
+            <button className="btn primary-accent" type="submit" disabled={busy}>
+              Invite staff
             </button>
           </form>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Active</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {staff.map((s) => (
-                <tr key={s.id}>
-                  <td>{s.email}</td>
-                  <td>{s.role}</td>
-                  <td>{s.active ? 'yes' : 'no'}</td>
-                  <td>
-                    {s.active && (
-                      <button
-                        className="btn secondary"
-                        type="button"
-                        onClick={async () => {
-                          setBusy(true)
-                          try {
-                            await portalApi.revokeStaff(s.id)
-                            setStaff(await portalApi.staff())
-                          } catch (e) {
-                            setError(e instanceof Error ? e.message : String(e))
-                          } finally {
-                            setBusy(false)
-                          }
-                        }}
-                      >
-                        Revoke
-                      </button>
-                    )}
-                  </td>
+
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {staff.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.email}</td>
+                    <td>{roleLabel(s.role)}</td>
+                    <td>{s.active ? 'Active' : 'Revoked'}</td>
+                    <td>
+                      {s.active && (
+                        <button
+                          className="btn ghost"
+                          type="button"
+                          onClick={async () => {
+                            setBusy(true)
+                            try {
+                              await portalApi.revokeStaff(s.id)
+                              setStaff(await portalApi.staff())
+                              setNotice('Access revoked')
+                            } catch (e) {
+                              setError(e instanceof Error ? e.message : String(e))
+                            } finally {
+                              setBusy(false)
+                            }
+                          }}
+                        >
+                          Revoke
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 
       {tab === 'audit' && canManageStaff && (
         <section>
-          <h2>Audit</h2>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Actor</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {audit.map((a) => (
-                <tr key={a.id}>
-                  <td>{new Date(a.timestamp).toLocaleString()}</td>
-                  <td>
-                    {a.actor_type}:{a.actor_id}
-                  </td>
-                  <td>{a.action}</td>
-                </tr>
-              ))}
-              {audit.length === 0 && (
+          <div className="section-head">
+            <h2>Audit</h2>
+            <p>Recent bank-scoped actions for this institution.</p>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
                 <tr>
-                  <td colSpan={3}>No bank-scoped audit events yet</td>
+                  <th>When</th>
+                  <th>Actor</th>
+                  <th>Action</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {audit.map((a) => (
+                  <tr key={a.id}>
+                    <td>{new Date(a.timestamp).toLocaleString()}</td>
+                    <td>
+                      {a.actor_type} · {a.actor_id}
+                    </td>
+                    <td>{a.action}</td>
+                  </tr>
+                ))}
+                {audit.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="empty">
+                      No audit events yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
     </div>
