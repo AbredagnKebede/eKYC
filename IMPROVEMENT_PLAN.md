@@ -31,6 +31,8 @@
 | 7 | **Observability + abuse** | Audit viewer, FIN/OTP lockouts | Yes | **Done** — `/v1/ops/audit` + lockout path |
 | 8 | **Amharic (+ Afaan Oromo)** | Locale toggle on critical screens | Yes | **Done** — `mobile/lib/l10n/strings.dart` |
 | 9 | **iOS + store distribution** | TestFlight / Play | Needs paid accounts | Deferred |
+| 10 | **Bank portals + dual Fast Forward** | Per-bank Next.js portal (Vercel), RBAC, `ff_outbound`/`ff_inbound` gates | Yes | **Done** — `bank-portal/` Next.js + `/v1/bank-portal/*` |
+| 11 | **Fayda-first mobile auth** | FIN+OTP before bank picker; optional app PIN lock | Yes | **Done** — passport identity routes + Flutter flow |
 
 ---
 
@@ -39,9 +41,12 @@
 ```bash
 # Against local Docker (API :8005)
 python3 scripts/verify_improvements.py
+python3 scripts/verify_bank_portal.py
 ```
 
 Last local run: **ALL IMPROVEMENT CHECKS PASSED** (passport multi-bank, resume_step, tier schemas, sandbox webhook, ops queue/approve path, audit list, `/ops` HTML, lockout, l10n files).
+
+Bank portal script covers: both FF ON auto-open, inbound hold+release, outbound queue+send, employee cannot PATCH settings, cross-bank isolation, Fayda-first passport session.
 
 Also: `flutter analyze lib` — no errors (1 style info fixed).
 
@@ -55,9 +60,12 @@ Also: `flutter analyze lib` — no errors (1 style info fixed).
 - [x] Bank can approve/reject via `/ops` (sandbox); webhook can open enterprise without poll-only  
 - [ ] Liveness rejects spoofs with production ONNX — deferred (#3)  
 - [x] Amharic / Afaan Oromo cover passport + core flow strings  
+- [x] Dual Fast Forward gates park outbound/inbound independently  
+- [x] Super Admin / Admin / Employee RBAC on bank portal  
+- [x] Fayda OTP before bank selection when passport session absent  
 
 ---
 
 ## Out of scope (for now)
 
-In-app balances, transfers, statements, credit, permanent biometric storage, plaintext FIN retention, real partner CBS endpoints, store distribution.
+In-app balances, transfers, statements, credit, permanent biometric storage, plaintext FIN retention, real partner CBS endpoints, store distribution, real bank SSO.
