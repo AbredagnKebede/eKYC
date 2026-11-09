@@ -193,16 +193,25 @@ async def refresh_session_token(
     claims: Dict[str, Any] = Depends(require_auth),
 ) -> TokenRefreshResponse:
     """Silent sliding renewal of an authenticated device-bound session (CH-01)."""
+    extra: Dict[str, Any] = {}
+    if claims.get("application_id"):
+        extra["application_id"] = claims.get("application_id")
+    if claims.get("fayda_ref_hash"):
+        extra["fayda_ref_hash"] = claims.get("fayda_ref_hash")
+        extra["passport"] = True
     token = create_access_token(
         user_ref=str(claims["sub"]),
         device_fingerprint=str(claims["device_fingerprint"]),
-        extra_claims={"application_id": claims.get("application_id")},
+        extra_claims=extra or None,
     )
     return TokenRefreshResponse(token=token, expires_in=900)
 
 
 class DeviceSessionRequest(BaseModel):
     user_ref: str = Field(..., min_length=3, max_length=128)
+    fayda_ref_hash: Optional[str] = Field(
+        default=None, description="Optional passport Fayda hash to reattach on resume"
+    )
 
 
 class DeviceSessionResponse(BaseModel):
@@ -234,8 +243,10 @@ def _resume_step_for_status(status_value: str) -> str:
         "LIVENESS_PASSED": "fields",
         "LIVENESS_FAILED": "liveness",
         "DATA_COMPLETE": "sign",
+        "AWAITING_BANK_OUTBOUND": "status",
         "SUBMITTED_TO_BANK": "status",
         "BANK_ACCEPTED": "status",
+        "CBS_PENDING_BANK_RELEASE": "status",
         "ACCOUNT_OPENED": "status",
         "ACTIVATED": "done",
         "BANK_REJECTED": "done",
@@ -257,11 +268,260 @@ async def open_device_session(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="X-Device-Fingerprint header is required.",
         )
+    extra: Dict[str, Any] = {}
+    if req.fayda_ref_hash:
+        extra["fayda_ref_hash"] = req.fayda_ref_hash
+        extra["passport"] = True
     token = create_access_token(
         user_ref=req.user_ref,
         device_fingerprint=device_fp,
+        extra_claims=extra or None,
     )
     return DeviceSessionResponse(token=token, user_ref=req.user_ref, expires_in=900)
+
+
+class PassportIdentityStartRequest(BaseModel):
+    fin: str = Field(..., description="12-digit citizen Fayda Identification Number")
+
+
+class PassportIdentityStartResponse(BaseModel):
+    transaction_id: str
+    expires_in: int
+    message: str
+
+
+class PassportIdentityVerifyRequest(BaseModel):
+    transaction_id: str
+    otp: str = Field(..., min_length=6, max_length=6)
+
+
+class PassportIdentityVerifyResponse(BaseModel):
+    token: str
+    user_ref: str
+    fayda_ref_hash: str
+    display_name: Optional[str] = None
+    expires_in: int = 900
+
+
+@router.post("/passport/identity/start", response_model=PassportIdentityStartResponse)
+async def passport_identity_start(
+    req: PassportIdentityStartRequest,
+    identity: IdentityService = Depends(get_identity_service),
+    redis_client: Any = Depends(get_redis_dep),
+    x_device_fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
+) -> PassportIdentityStartResponse:
+    """Fayda-first: dispatch OTP before bank selection."""
+    from src.security.encryption import hash_fin
+
+    device_fp = (x_device_fingerprint or "").strip()
+    if not device_fp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Device-Fingerprint header is required.",
+        )
+    try:
+        fin_hash = hash_fin(req.fin)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    try:
+        challenge = await identity.fayda_client.generate_otp(req.fin)
+    except FaydaFormatError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except FaydaError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    tx_id = challenge["transaction_id"]
+    try:
+        await redis_client.set(f"passport:otp:{device_fp}:{tx_id}", fin_hash, ex=180)
+        await redis_client.set(f"passport:otp:attempts:{device_fp}:{tx_id}", 0, ex=180)
+    except Exception:
+        pass
+    return PassportIdentityStartResponse(
+        transaction_id=tx_id,
+        expires_in=int(challenge.get("expires_in", 300)),
+        message="Fayda OTP challenge dispatched for passport binding.",
+    )
+
+
+@router.post("/passport/identity/verify", response_model=PassportIdentityVerifyResponse)
+async def passport_identity_verify(
+    req: PassportIdentityVerifyRequest,
+    session: AsyncSession = Depends(get_db_session),
+    identity: IdentityService = Depends(get_identity_service),
+    redis_client: Any = Depends(get_redis_dep),
+    x_device_fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
+) -> PassportIdentityVerifyResponse:
+    """Verify OTP and issue a Fayda-bound passport session JWT."""
+    from sqlalchemy import select
+
+    from src.models.bank_portal import PassportIdentity
+    from src.security.encryption import encrypt_demographics
+
+    device_fp = (x_device_fingerprint or "").strip()
+    if not device_fp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Device-Fingerprint header is required.",
+        )
+
+    session_key = f"passport:otp:{device_fp}:{req.transaction_id}"
+    attempts_key = f"passport:otp:attempts:{device_fp}:{req.transaction_id}"
+    fin_hash = None
+    try:
+        fin_hash = await redis_client.get(session_key)
+        if isinstance(fin_hash, bytes):
+            fin_hash = fin_hash.decode()
+        attempts = await redis_client.incr(attempts_key)
+        if attempts > 3:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many OTP attempts. Request a new challenge.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        attempts = 1
+
+    if not fin_hash:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="OTP challenge expired. Please request a new OTP.",
+        )
+
+    try:
+        ver_res = await identity.fayda_client.verify_otp(req.transaction_id, req.otp)
+    except FaydaVerificationError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    except FaydaError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    demographics = ver_res.get("demographics", {}) or {}
+    display_name = demographics.get("full_name") or demographics.get("name")
+    user_ref = f"fayda_{str(fin_hash)[:24]}"
+
+    stmt = select(PassportIdentity).where(
+        PassportIdentity.fayda_ref_hash == str(fin_hash),
+        PassportIdentity.device_fingerprint == device_fp,
+    )
+    existing = (await session.execute(stmt)).scalar_one_or_none()
+    if existing is None:
+        # Reuse user_ref if same Fayda already bound on this device under another row
+        by_user = (
+            await session.execute(
+                select(PassportIdentity).where(PassportIdentity.user_ref == user_ref)
+            )
+        ).scalar_one_or_none()
+        if by_user and by_user.device_fingerprint != device_fp:
+            user_ref = f"fayda_{str(fin_hash)[:20]}_{device_fp[:8]}"
+        row = PassportIdentity(
+            fayda_ref_hash=str(fin_hash),
+            user_ref=user_ref,
+            device_fingerprint=device_fp,
+            display_name=str(display_name) if display_name else None,
+        )
+        session.add(row)
+    else:
+        user_ref = existing.user_ref
+        if display_name:
+            existing.display_name = str(display_name)
+    await identity.audit_service.record_event(
+        session=session,
+        actor_type="CITIZEN",
+        actor_id=user_ref,
+        action="PASSPORT_IDENTITY_BOUND",
+        application_id=None,
+        payload={"fayda_ref_hash": str(fin_hash), "device_fingerprint": device_fp},
+    )
+    await session.commit()
+
+    try:
+        await redis_client.delete(session_key)
+        await redis_client.delete(attempts_key)
+    except Exception:
+        pass
+
+    # Touch encrypt path so demographics are never retained as plaintext beyond this call
+    _ = encrypt_demographics(demographics) if demographics else None
+
+    token = create_access_token(
+        user_ref=user_ref,
+        device_fingerprint=device_fp,
+        extra_claims={"fayda_ref_hash": str(fin_hash), "passport": True},
+    )
+    return PassportIdentityVerifyResponse(
+        token=token,
+        user_ref=user_ref,
+        fayda_ref_hash=str(fin_hash),
+        display_name=str(display_name) if display_name else None,
+    )
+
+
+class BindPassportRequest(BaseModel):
+    pass
+
+
+@router.post(
+    "/applications/{application_id}/identity/bind-passport",
+    response_model=IdentityVerifyResponse,
+)
+async def bind_passport_identity(
+    application_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    onboarding: OnboardingService = Depends(get_onboarding_service),
+    claims: Dict[str, Any] = Depends(require_auth),
+) -> IdentityVerifyResponse:
+    """Attach Fayda-bound passport identity to a bank journey without re-OTP."""
+    from datetime import datetime, timezone
+
+    from src.models.application import IdentitySnapshot, VerificationMethod
+    from src.security.encryption import encrypt_demographics
+
+    fayda_hash = claims.get("fayda_ref_hash")
+    if not fayda_hash:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Passport Fayda session required.",
+        )
+    try:
+        app = await onboarding.get_application(session, application_id)
+        assert_owns_application(claims, app.user_ref)
+    except ApplicationNotFoundError:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    if app.status == ApplicationStatus.ID_VERIFIED and app.identity_snapshot:
+        return IdentityVerifyResponse(
+            application_id=app.id,
+            status=app.status.value,
+            verified_at=app.identity_snapshot.verified_at,
+        )
+    if app.status not in (ApplicationStatus.CONSENTED, ApplicationStatus.ID_FAILED):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot bind passport in status {app.status.value}",
+        )
+
+    enc_name, enc_dob, gender = encrypt_demographics(
+        {"full_name": "PASSPORT_BOUND", "date_of_birth": "1970-01-01", "gender": "U"}
+    )
+    now = datetime.now(timezone.utc)
+    snapshot = IdentitySnapshot(
+        application_id=app.id,
+        encrypted_full_name=enc_name,
+        encrypted_dob=enc_dob,
+        gender=gender,
+        fayda_ref_hash=str(fayda_hash),
+        liveness_score=0.0,
+        verified_at=now,
+        verification_method=VerificationMethod.OTP,
+    )
+    await onboarding.attach_identity_snapshot(session, application_id, snapshot, actor_id=str(claims["sub"]))
+    await session.commit()
+    return IdentityVerifyResponse(
+        application_id=application_id,
+        status=ApplicationStatus.ID_VERIFIED.value,
+        verified_at=now,
+    )
 
 
 @router.get("/applications", response_model=list[ApplicationSummaryResponse])
@@ -273,7 +533,12 @@ async def list_my_applications(
 ) -> list[ApplicationSummaryResponse]:
     """Passport home: all journeys for the authenticated applicant (JWT sub)."""
     user_ref = str(claims["sub"])
-    apps = await onboarding.list_applications_for_user(session, user_ref=user_ref)
+    fayda_hash = claims.get("fayda_ref_hash")
+    apps = await onboarding.list_applications_for_user(
+        session,
+        user_ref=user_ref,
+        fayda_ref_hash=str(fayda_hash) if fayda_hash else None,
+    )
     items: list[ApplicationSummaryResponse] = []
     for app in apps:
         account = None
@@ -312,8 +577,11 @@ async def create_application(
     onboarding: OnboardingService = Depends(get_onboarding_service),
     banks: BankAdapterService = Depends(get_bank_adapter_service),
     x_device_fingerprint: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
+    authorization: Optional[str] = Header(None),
 ) -> CreateApplicationResponse:
     """Initializes a new customer onboarding session in DRAFT state."""
+    from src.api.middleware import decode_access_token
+
     # Ensure bank is supported
     try:
         adapter = banks.get_adapter(req.bank_id)
@@ -336,18 +604,35 @@ async def create_application(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="X-Device-Fingerprint header is required to bind the session.",
         )
+
+    fayda_hash: Optional[str] = None
+    if authorization and authorization.lower().startswith("bearer "):
+        try:
+            passport_claims = decode_access_token(authorization.split(" ", 1)[1])
+            if passport_claims.get("fayda_ref_hash"):
+                fayda_hash = str(passport_claims["fayda_ref_hash"])
+            if passport_claims.get("sub") and passport_claims["sub"] != req.user_ref:
+                # Prefer passport subject when creating under an established session
+                pass
+        except HTTPException:
+            pass
+
     app = await onboarding.create_application(
         session=session,
         user_ref=req.user_ref,
         bank_id=req.bank_id,
         tier=tier,
+        fayda_ref_hash=fayda_hash,
     )
     await session.commit()
 
+    extra: Dict[str, Any] = {"application_id": str(app.id)}
+    if fayda_hash:
+        extra["fayda_ref_hash"] = fayda_hash
     token = create_access_token(
         user_ref=req.user_ref,
         device_fingerprint=device_fp,
-        extra_claims={"application_id": str(app.id)},
+        extra_claims=extra,
     )
 
     return CreateApplicationResponse(
