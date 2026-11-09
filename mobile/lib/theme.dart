@@ -161,9 +161,125 @@ ThemeData buildEkycTheme() {
       hintStyle: TextStyle(color: EkycColors.muted.withValues(alpha: 0.7)),
     ),
     dividerTheme: const DividerThemeData(color: EkycColors.line, thickness: 1, space: 1),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: EkycColors.surface,
+      indicatorColor: EkycColors.tealSoft,
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          fontSize: 12,
+          fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+          color: states.contains(WidgetState.selected) ? EkycColors.teal : EkycColors.muted,
+        ),
+      ),
+    ),
     snackBarTheme: const SnackBarThemeData(
       backgroundColor: EkycColors.navy,
       contentTextStyle: TextStyle(color: Colors.white),
     ),
+  );
+}
+
+ThemeData buildEkycDarkTheme() {
+  const paper = Color(0xFF0B1220);
+  const surface = Color(0xFF121C2C);
+  const ink = Color(0xFFE8EDF4);
+  const muted = Color(0xFF94A3B8);
+  const line = Color(0xFF2A3648);
+
+  final base = GoogleFonts.plusJakartaSansTextTheme(ThemeData(brightness: Brightness.dark).textTheme);
+  final display = GoogleFonts.fraunces();
+
+  TextStyle merge(TextStyle? a, TextStyle b) => (a ?? const TextStyle()).merge(b);
+
+  return ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.dark,
+    scaffoldBackgroundColor: paper,
+    colorScheme: const ColorScheme.dark(
+      primary: EkycColors.tealBright,
+      secondary: EkycColors.teal,
+      surface: surface,
+      error: EkycColors.danger,
+      onPrimary: EkycColors.navyDeep,
+      onSecondary: Colors.white,
+      onSurface: ink,
+      onError: Colors.white,
+    ),
+    textTheme: base.copyWith(
+      displaySmall: merge(
+        display,
+        const TextStyle(
+          fontSize: 34,
+          height: 1.12,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.7,
+          color: ink,
+        ),
+      ),
+      headlineMedium: merge(
+        display,
+        const TextStyle(
+          fontSize: 24,
+          height: 1.22,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.35,
+          color: ink,
+        ),
+      ),
+      titleLarge: merge(
+        base.titleLarge,
+        const TextStyle(fontSize: 18, height: 1.3, fontWeight: FontWeight.w700, color: ink),
+      ),
+      bodyLarge: merge(base.bodyLarge, const TextStyle(fontSize: 16, height: 1.5, color: muted)),
+      bodyMedium: merge(base.bodyMedium, const TextStyle(fontSize: 14, height: 1.45, color: muted)),
+    ),
+    appBarTheme: AppBarTheme(
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      backgroundColor: paper,
+      foregroundColor: ink,
+      systemOverlayStyle: SystemUiOverlayStyle.light,
+      titleTextStyle: GoogleFonts.plusJakartaSans(
+        color: ink,
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: EkycColors.teal,
+        foregroundColor: Colors.white,
+        minimumSize: const Size.fromHeight(52),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: surface,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: line),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: line),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: EkycColors.tealBright, width: 1.5),
+      ),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: surface,
+      indicatorColor: EkycColors.teal.withValues(alpha: 0.25),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          fontSize: 12,
+          fontWeight: states.contains(WidgetState.selected) ? FontWeight.w700 : FontWeight.w500,
+          color: states.contains(WidgetState.selected) ? EkycColors.tealBright : muted,
+        ),
+      ),
+    ),
+    dividerTheme: const DividerThemeData(color: line, thickness: 1),
   );
 }

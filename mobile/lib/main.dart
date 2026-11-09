@@ -4,13 +4,19 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:signature/signature.dart';
 import 'package:uuid/uuid.dart';
 
 import 'api/ekyc_api.dart';
 import 'l10n/strings.dart';
+import 'screens/home_tab.dart';
+import 'screens/settings_tab.dart';
+import 'security/pin_helpers.dart';
+import 'security/pin_repository.dart';
 import 'theme.dart';
+import 'widgets/app_lock_gate.dart';
 
 const kDefaultApiBase = String.fromEnvironment(
   'API_BASE',
@@ -23,8 +29,36 @@ void main() {
   runApp(const EkycApp());
 }
 
-class EkycApp extends StatelessWidget {
+class EkycApp extends StatefulWidget {
   const EkycApp({super.key});
+
+  @override
+  State<EkycApp> createState() => _EkycAppState();
+}
+
+class _EkycAppState extends State<EkycApp> {
+  ThemeMode _themeMode = ThemeMode.light;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadThemeMode();
+  }
+
+  Future<void> _loadThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString('theme_mode') ?? 'light';
+    if (!mounted) return;
+    setState(() {
+      _themeMode = stored == 'dark' ? ThemeMode.dark : ThemeMode.light;
+    });
+  }
+
+  Future<void> _setThemeMode(ThemeMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('theme_mode', mode == ThemeMode.dark ? 'dark' : 'light');
+    setState(() => _themeMode = mode);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,10 +66,17 @@ class EkycApp extends StatelessWidget {
       title: 'Fayda Onboard',
       debugShowCheckedModeBanner: false,
       theme: buildEkycTheme(),
-      home: const OnboardingShell(),
+      darkTheme: buildEkycDarkTheme(),
+      themeMode: _themeMode,
+      home: OnboardingShell(
+        themeMode: _themeMode,
+        onThemeModeChanged: _setThemeMode,
+      ),
     );
   }
 }
+
+enum ShellTab { home, passport, settings }
 
 enum StepId {
   welcome,
@@ -51,13 +92,20 @@ enum StepId {
 }
 
 class OnboardingShell extends StatefulWidget {
-  const OnboardingShell({super.key});
+  const OnboardingShell({
+    super.key,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+  });
+
+  final ThemeMode themeMode;
+  final Future<void> Function(ThemeMode mode) onThemeModeChanged;
 
   @override
   State<OnboardingShell> createState() => _OnboardingShellState();
 }
 
-class _OnboardingShellState extends State<OnboardingShell> {
+class _OnboardingShellState extends State<OnboardingShell> with WidgetsBindingObserver {
   late EkycApi api;
   String apiBase = kDefaultApiBase;
   String? deviceFp;
@@ -77,8 +125,16 @@ class _OnboardingShellState extends State<OnboardingShell> {
   List<String> availableTiers = const ['standard'];
   Map<String, dynamic>? selectedBankSchema;
   bool passportBound = false;
+  ShellTab shellTab = ShellTab.home;
+  bool biometricUnlockEnabled = false;
+  int? partnerBankCount;
+  final PinRepository _pinRepo = PinRepository();
+  final PinLockoutState _unlockLockout = PinLockoutState();
+  final LocalAuthentication _localAuth = LocalAuthentication();
 
   S get s => S(locale);
+
+  bool get _showMainShell => passportBound && !locked && showPassport;
 
   List<Map<String, dynamic>> banks = [];
   String? bankId;
@@ -233,12 +289,20 @@ class _OnboardingShellState extends State<OnboardingShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     sigCtrl = SignatureController(
       penStrokeWidth: 2.2,
       penColor: EkycColors.navy,
       exportBackgroundColor: Colors.white,
     );
     _bootstrap();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused && appLockEnabled && (appPinHash?.isNotEmpty ?? false)) {
+      setState(() => locked = true);
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -248,7 +312,8 @@ class _OnboardingShellState extends State<OnboardingShell> {
     userRef = prefs.getString('user_ref');
     faydaRefHash = prefs.getString('fayda_ref_hash');
     appLockEnabled = prefs.getBool('app_lock_enabled') ?? false;
-    appPinHash = prefs.getString('app_pin_hash');
+    biometricUnlockEnabled = prefs.getBool('biometric_unlock_enabled') ?? false;
+    appPinHash = await _pinRepo.loadPinHash();
     passportBound = faydaRefHash != null && faydaRefHash!.isNotEmpty;
     var fp = prefs.getString('device_fp');
     if (fp == null || fp.isEmpty) {
@@ -268,6 +333,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
         await _refreshPassport();
         showPassport = true;
         locked = appLockEnabled && (appPinHash != null && appPinHash!.isNotEmpty);
+        await _refreshPartnerBankCount();
       } catch (_) {
         // cold start without server is fine; still show passport shell if bound
         showPassport = true;
@@ -277,6 +343,16 @@ class _OnboardingShellState extends State<OnboardingShell> {
     setState(() {});
   }
 
+  Future<void> _refreshPartnerBankCount() async {
+    try {
+      final raw = await api.listBanks();
+      if (!mounted) return;
+      setState(() => partnerBankCount = raw.length);
+    } catch (_) {
+      // home hero still renders without count
+    }
+  }
+
   Future<void> _persistSession() async {
     final prefs = await SharedPreferences.getInstance();
     if (userRef != null) await prefs.setString('user_ref', userRef!);
@@ -284,7 +360,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
     if (api.token != null) await prefs.setString('token', api.token!);
     await prefs.setString('locale', locale);
     await prefs.setBool('app_lock_enabled', appLockEnabled);
-    if (appPinHash != null) await prefs.setString('app_pin_hash', appPinHash!);
+    await prefs.setBool('biometric_unlock_enabled', biometricUnlockEnabled);
   }
 
   Future<void> _signOut() async {
@@ -311,7 +387,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
   }
 
   String _hashPin(String pin) {
-    return sha256.convert(utf8.encode('ekyc-pin:$pin:${deviceFp ?? ''}')).toString();
+    return hashPin(pin, deviceFp ?? '');
   }
 
   Future<void> _refreshPassport() async {
@@ -672,6 +748,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     incomeCtrl.dispose();
     occupationCtrl.dispose();
     branchCtrl.dispose();
@@ -680,6 +757,15 @@ class _OnboardingShellState extends State<OnboardingShell> {
     }
     sigCtrl.dispose();
     super.dispose();
+  }
+
+  void _onShellTabSelected(ShellTab tab) {
+    setState(() => shellTab = tab);
+    if (tab == ShellTab.passport) {
+      _refreshPassport();
+    } else if (tab == ShellTab.home) {
+      _refreshPartnerBankCount();
+    }
   }
 
   @override
@@ -693,10 +779,18 @@ class _OnboardingShellState extends State<OnboardingShell> {
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: _AppLockGate(
+            child: AppLockGate(
+              locale: locale,
               title: s.t('lock.title'),
               hint: s.t('lock.hint'),
+              biometricEnabled: biometricUnlockEnabled && appLockEnabled,
+              lockout: _unlockLockout,
+              onLockoutChanged: (_) => setState(() {}),
               onUnlock: (pin) {
+                if (pin == '__biometric__') {
+                  setState(() => locked = false);
+                  return true;
+                }
                 if (_hashPin(pin) == appPinHash) {
                   setState(() => locked = false);
                   return true;
@@ -705,6 +799,77 @@ class _OnboardingShellState extends State<OnboardingShell> {
               },
             ),
           ),
+        ),
+      );
+    }
+
+    if (_showMainShell) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset('assets/icon/app_icon.png', width: 28, height: 28, fit: BoxFit.cover),
+              ),
+              const SizedBox(width: 10),
+              Flexible(child: Text(s.t('brand'), overflow: TextOverflow.ellipsis)),
+            ],
+          ),
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              if (error != null) _errorBanner(),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  child: Padding(
+                    key: ValueKey(shellTab),
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                    child: switch (shellTab) {
+                      ShellTab.home => HomeTab(
+                          locale: locale,
+                          partnerCount: partnerBankCount,
+                          busy: busy,
+                          onOpenBank: _loadBanksAndStart,
+                        ),
+                      ShellTab.passport => _buildPassport(context),
+                      ShellTab.settings => SettingsTab(
+                          locale: locale,
+                          themeMode: widget.themeMode,
+                          appLockEnabled: appLockEnabled,
+                          biometricEnabled: biometricUnlockEnabled,
+                          onLocale: (v) async {
+                            setState(() => locale = v);
+                            await _persistSession();
+                          },
+                          onThemeMode: widget.onThemeModeChanged,
+                          onConfigureLock: () => _configureAppLock(context),
+                          onSignOut: _signOut,
+                          onDevApiBase: () => _openSettings(context),
+                        ),
+                    },
+                  ),
+                ),
+              ),
+              if (busy) const LinearProgressIndicator(minHeight: 2, color: EkycColors.teal),
+            ],
+          ),
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: shellTab.index,
+          onDestinationSelected: (i) => _onShellTabSelected(ShellTab.values[i]),
+          destinations: [
+            NavigationDestination(icon: const Icon(Icons.home_outlined), label: s.t('nav.home')),
+            NavigationDestination(
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              label: s.t('nav.passport'),
+            ),
+            NavigationDestination(icon: const Icon(Icons.settings_outlined), label: s.t('nav.settings')),
+          ],
         ),
       );
     }
@@ -719,98 +884,37 @@ class _OnboardingShellState extends State<OnboardingShell> {
                 icon: const Icon(Icons.arrow_back_rounded),
               )
             : null,
-        title: GestureDetector(
-          onLongPress: () => _openSettings(context),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.asset('assets/icon/app_icon.png', width: 28, height: 28, fit: BoxFit.cover),
-              ),
-              const SizedBox(width: 10),
-              Flexible(child: Text(s.t('brand'), overflow: TextOverflow.ellipsis)),
-            ],
+        title: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset('assets/icon/app_icon.png', width: 28, height: 28, fit: BoxFit.cover),
+            ),
+            const SizedBox(width: 10),
+            Flexible(child: Text(s.t('brand'), overflow: TextOverflow.ellipsis)),
+          ],
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(18),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: _StepRail(index: progressIndex, total: 10),
           ),
         ),
-        actions: [
-          PopupMenuButton<String>(
-            tooltip: 'Language',
-            initialValue: locale,
-            onSelected: (v) async {
-              setState(() => locale = v);
-              await _persistSession();
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'en', child: Text('English')),
-              const PopupMenuItem(value: 'am', child: Text('አማርኛ')),
-              const PopupMenuItem(value: 'om', child: Text('Afaan Oromoo')),
-            ],
-            icon: const Icon(Icons.translate_rounded, size: 22),
-          ),
-          if (passportBound && !showPassport)
-            IconButton(
-              tooltip: s.t('nav.passport'),
-              onPressed: busy
-                  ? null
-                  : () async {
-                      await _refreshPassport();
-                      setState(() {
-                        error = null;
-                        showPassport = true;
-                      });
-                    },
-              icon: const Icon(Icons.account_balance_wallet_outlined, size: 22),
-            ),
-          if (passportBound)
-            PopupMenuButton<String>(
-              onSelected: (v) async {
-                if (v == 'signout') {
-                  await _signOut();
-                } else if (v == 'lock') {
-                  await _configureAppLock(context);
-                }
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(value: 'lock', child: Text(s.t('lock.configure'))),
-                PopupMenuItem(value: 'signout', child: Text(s.t('nav.sign_out'))),
-              ],
-              icon: const Icon(Icons.more_vert, size: 22),
-            ),
-        ],
-        bottom: showPassport
-            ? null
-            : PreferredSize(
-                preferredSize: const Size.fromHeight(18),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                  child: _StepRail(index: progressIndex, total: 10),
-                ),
-              ),
       ),
       body: SafeArea(
         child: Column(
           children: [
-            if (error != null)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: EkycColors.dangerSoft,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: EkycColors.danger.withValues(alpha: 0.25)),
-                ),
-                child: Text(error!, style: const TextStyle(color: EkycColors.danger, height: 1.35)),
-              ),
+            if (error != null) _errorBanner(),
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 260),
                 switchInCurve: Curves.easeOutCubic,
                 switchOutCurve: Curves.easeInCubic,
                 child: Padding(
-                  key: ValueKey('${showPassport}_$step'),
+                  key: ValueKey(step),
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                  child: showPassport ? _buildPassport(context) : _buildStep(context),
+                  child: _buildStep(context),
                 ),
               ),
             ),
@@ -818,6 +922,20 @@ class _OnboardingShellState extends State<OnboardingShell> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _errorBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: EkycColors.dangerSoft,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: EkycColors.danger.withValues(alpha: 0.25)),
+      ),
+      child: Text(error!, style: const TextStyle(color: EkycColors.danger, height: 1.35)),
     );
   }
 
@@ -902,61 +1020,175 @@ class _OnboardingShellState extends State<OnboardingShell> {
     );
   }
 
+  String _pinPolicyMessage(String? code) {
+    return switch (code) {
+      'current_required' => s.t('lock.current_required'),
+      'current_wrong' => s.t('lock.current_wrong'),
+      'format' => s.t('lock.pin_digits'),
+      'mismatch' => s.t('lock.pin_mismatch'),
+      _ => s.t('error.generic'),
+    };
+  }
+
   Future<void> _configureAppLock(BuildContext context) async {
-    final ctrl = TextEditingController();
-    final enabled = await showDialog<bool>(
+    final currentCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+
+    final result = await showDialog<_LockDialogResult>(
       context: context,
       builder: (ctx) {
-        var on = appLockEnabled;
+        var enableLock = appLockEnabled;
+        var enableBio = biometricUnlockEnabled;
+        String? dialogError;
+
         return StatefulBuilder(
           builder: (ctx, setLocal) {
+            void save() {
+              if (!enableLock) {
+                final disableErr = PinChangePolicy.validateDisable(
+                  existingHash: appPinHash,
+                  currentPin: currentCtrl.text.trim(),
+                  hash: _hashPin,
+                );
+                if (disableErr != null) {
+                  setLocal(() => dialogError = _pinPolicyMessage(disableErr));
+                  return;
+                }
+                Navigator.pop(
+                  ctx,
+                  _LockDialogResult(
+                    enableLock: false,
+                    enableBio: false,
+                    newPin: '',
+                    currentPin: currentCtrl.text.trim(),
+                  ),
+                );
+                return;
+              }
+
+              final err = PinChangePolicy.validateSetOrChange(
+                existingHash: appPinHash,
+                currentPin: currentCtrl.text.trim(),
+                newPin: newCtrl.text.trim(),
+                confirmPin: confirmCtrl.text.trim(),
+                hash: _hashPin,
+              );
+              if (err != null) {
+                setLocal(() => dialogError = _pinPolicyMessage(err));
+                return;
+              }
+              Navigator.pop(
+                ctx,
+                _LockDialogResult(
+                  enableLock: true,
+                  enableBio: enableBio,
+                  newPin: newCtrl.text.trim(),
+                  currentPin: currentCtrl.text.trim(),
+                ),
+              );
+            }
+
+            final needsCurrent = PinChangePolicy.requiresCurrentPinBeforeChange(appPinHash);
+
             return AlertDialog(
               title: Text(s.t('lock.configure')),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(s.t('lock.enable')),
-                    value: on,
-                    onChanged: (v) => setLocal(() => on = v),
-                  ),
-                  if (on)
-                    TextField(
-                      controller: ctrl,
-                      obscureText: true,
-                      keyboardType: TextInputType.number,
-                      maxLength: 6,
-                      decoration: InputDecoration(labelText: s.t('lock.pin')),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(s.t('lock.enable')),
+                      value: enableLock,
+                      onChanged: (v) => setLocal(() {
+                        enableLock = v;
+                        dialogError = null;
+                      }),
                     ),
-                ],
+                    if (enableLock) ...[
+                      if (needsCurrent)
+                        TextField(
+                          controller: currentCtrl,
+                          obscureText: true,
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
+                          decoration: InputDecoration(labelText: s.t('lock.current_pin')),
+                        ),
+                      TextField(
+                        controller: newCtrl,
+                        obscureText: true,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        decoration: InputDecoration(
+                          labelText: needsCurrent ? s.t('lock.new_pin') : s.t('lock.pin'),
+                        ),
+                      ),
+                      TextField(
+                        controller: confirmCtrl,
+                        obscureText: true,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        decoration: InputDecoration(labelText: s.t('lock.confirm_pin')),
+                      ),
+                      FutureBuilder<bool>(
+                        future: _localAuth.canCheckBiometrics,
+                        builder: (context, snap) {
+                          if (snap.data != true) return const SizedBox.shrink();
+                          return SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(s.t('settings.bio_enable')),
+                            value: enableBio,
+                            onChanged: (v) => setLocal(() => enableBio = v),
+                          );
+                        },
+                      ),
+                    ],
+                    if (!enableLock && needsCurrent)
+                      TextField(
+                        controller: currentCtrl,
+                        obscureText: true,
+                        keyboardType: TextInputType.number,
+                        maxLength: 6,
+                        decoration: InputDecoration(labelText: s.t('lock.current_pin')),
+                      ),
+                    if (dialogError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(dialogError!, style: const TextStyle(color: EkycColors.danger)),
+                    ],
+                  ],
+                ),
               ),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.t('nav.back'))),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx, on),
-                  child: Text(s.t('lock.save')),
-                ),
+                FilledButton(onPressed: save, child: Text(s.t('lock.save'))),
               ],
             );
           },
         );
       },
     );
-    if (enabled == null) return;
-    if (enabled) {
-      final pin = ctrl.text.trim();
-      if (pin.length < 4) {
-        setState(() => error = s.t('lock.pin_short'));
-        return;
-      }
-      appLockEnabled = true;
-      appPinHash = _hashPin(pin);
-    } else {
+
+    currentCtrl.dispose();
+    newCtrl.dispose();
+    confirmCtrl.dispose();
+    if (result == null) return;
+
+    if (!result.enableLock) {
       appLockEnabled = false;
       appPinHash = null;
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('app_pin_hash');
+      biometricUnlockEnabled = false;
+      await _pinRepo.clearPinHash();
+    } else {
+      appLockEnabled = true;
+      appPinHash = _hashPin(result.newPin);
+      await _pinRepo.savePinHash(appPinHash!);
+      if (result.enableBio) {
+        final canBio = await _localAuth.canCheckBiometrics;
+        biometricUnlockEnabled = canBio;
+      } else {
+        biometricUnlockEnabled = false;
+      }
     }
     await _persistSession();
     setState(() {});
@@ -1740,64 +1972,16 @@ class _Done extends StatelessWidget {
   }
 }
 
-class _AppLockGate extends StatefulWidget {
-  const _AppLockGate({
-    required this.title,
-    required this.hint,
-    required this.onUnlock,
+class _LockDialogResult {
+  const _LockDialogResult({
+    required this.enableLock,
+    required this.enableBio,
+    required this.newPin,
+    required this.currentPin,
   });
-  final String title;
-  final String hint;
-  final bool Function(String pin) onUnlock;
 
-  @override
-  State<_AppLockGate> createState() => _AppLockGateState();
-}
-
-class _AppLockGateState extends State<_AppLockGate> {
-  final ctrl = TextEditingController();
-  String? err;
-
-  @override
-  void dispose() {
-    ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Spacer(),
-        Text(widget.title, style: Theme.of(context).textTheme.headlineMedium),
-        const SizedBox(height: 8),
-        Text(widget.hint, style: const TextStyle(color: EkycColors.muted)),
-        const SizedBox(height: 20),
-        TextField(
-          controller: ctrl,
-          obscureText: true,
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          decoration: const InputDecoration(labelText: 'PIN'),
-          onSubmitted: (_) => _try(),
-        ),
-        if (err != null) ...[
-          const SizedBox(height: 8),
-          Text(err!, style: const TextStyle(color: EkycColors.danger)),
-        ],
-        const SizedBox(height: 16),
-        FilledButton(onPressed: _try, child: const Text('Unlock')),
-        const Spacer(),
-      ],
-    );
-  }
-
-  void _try() {
-    if (widget.onUnlock(ctrl.text.trim())) {
-      setState(() => err = null);
-    } else {
-      setState(() => err = 'Incorrect PIN');
-    }
-  }
+  final bool enableLock;
+  final bool enableBio;
+  final String newPin;
+  final String currentPin;
 }
