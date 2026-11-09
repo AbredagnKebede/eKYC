@@ -40,9 +40,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager initializing resources on startup and cleaning up on shutdown."""
     logger.info("Starting eKYC API Gateway...")
     try:
-        from src.models.base import init_models
+        from src.models.base import async_session_factory, init_models
+        from src.models.schema_ensure import ensure_schema_extensions
+        from src.api.routes.bank_portal import bootstrap_bank_portal_staff
+
         await init_models()
+        await ensure_schema_extensions()
         logger.info("Database tables initialized.")
+        async with async_session_factory() as session:
+            n = await bootstrap_bank_portal_staff(session)
+            await session.commit()
+            logger.info("Bank portal bootstrap: %s new super admins", n)
     except Exception as exc:
         logger.warning("Database initialization deferred: %s", exc)
     yield
@@ -189,15 +197,19 @@ def create_app() -> FastAPI:
 
     # 6. Mount API Routers
     from src.api.routes.ops import router as ops_router
+    from src.api.routes.bank_portal import router as bank_portal_router
 
     app.include_router(banks_router)
     app.include_router(applications_router)
     app.include_router(ops_router)
+    app.include_router(bank_portal_router)
 
-    # 7. Tester landing page + APK downloads
+    # 7. Tester landing page + APK downloads + bank portal
     static_root = Path(__file__).resolve().parents[2] / "static"
     releases_dir = static_root / "releases"
     releases_dir.mkdir(parents=True, exist_ok=True)
+    portal_dir = static_root / "bank-portal"
+    portal_dir.mkdir(parents=True, exist_ok=True)
     if static_root.exists():
         app.mount("/static", StaticFiles(directory=str(static_root)), name="static")
 
@@ -212,6 +224,23 @@ def create_app() -> FastAPI:
     @app.get("/ops", include_in_schema=False)
     async def ops_console() -> FileResponse:
         return FileResponse(static_root / "ops" / "index.html")
+
+    @app.get("/bank-portal", include_in_schema=False)
+    @app.get("/bank-portal/", include_in_schema=False)
+    async def bank_portal_home():
+        """Prefer the Vercel Next.js portal when BANK_PORTAL_URL is set."""
+        from fastapi.responses import RedirectResponse
+
+        portal_url = (os.getenv("BANK_PORTAL_URL") or "").strip()
+        if portal_url:
+            return RedirectResponse(url=portal_url, status_code=307)
+        index = portal_dir / "index.html"
+        if not index.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="Bank portal UI not configured. Deploy bank-portal/ on Vercel or set BANK_PORTAL_URL.",
+            )
+        return FileResponse(index)
 
     return app
 

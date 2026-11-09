@@ -12,7 +12,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 RUN chmod +x scripts/start_cloud.sh \
-    && mkdir -p /app/static/releases
+    && mkdir -p /app/static/releases /app/static/bank-portal
 
 # Optional: copy prebuilt APK into image if present at build time
 # COPY mobile/build/app/outputs/flutter-apk/app-release.apk /app/static/releases/ekyc-tester.apk

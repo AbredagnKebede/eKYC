@@ -39,6 +39,21 @@ asyncio.run(init_models(retries=8, delay=2.0))
 print("[cloud] schema ready")
 PY
 
+echo "[cloud] Bootstrapping bank portal Super Admins..."
+python - <<'PY'
+import asyncio
+from src.models.base import async_session_factory
+from src.api.routes.bank_portal import bootstrap_bank_portal_staff
+
+async def main():
+    async with async_session_factory() as session:
+        n = await bootstrap_bank_portal_staff(session)
+        await session.commit()
+        print(f"[cloud] portal staff seeded: {n} new super admins")
+
+asyncio.run(main())
+PY
+
 echo "[cloud] Waiting for Redis..."
 python - <<'PY'
 import asyncio, os, sys
