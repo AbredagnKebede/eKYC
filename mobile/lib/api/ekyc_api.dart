@@ -50,11 +50,18 @@ class EkycApi {
     return jsonDecode(r.body) as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> openDeviceSession(String userRef) async {
+  Future<Map<String, dynamic>> openDeviceSession(
+    String userRef, {
+    String? faydaRefHash,
+  }) async {
+    final body = <String, dynamic>{'user_ref': userRef};
+    if (faydaRefHash != null && faydaRefHash.isNotEmpty) {
+      body['fayda_ref_hash'] = faydaRefHash;
+    }
     final r = await http.post(
       _u('/v1/auth/device'),
       headers: _headers,
-      body: jsonEncode({'user_ref': userRef}),
+      body: jsonEncode(body),
     );
     final data = await _decode(r);
     token = data['token'] as String?;
@@ -119,6 +126,34 @@ class EkycApi {
       _u('/v1/applications/$appId/identity/verify'),
       headers: _headers,
       body: jsonEncode({'transaction_id': txId, 'otp': otp}),
+    );
+    return _decode(r);
+  }
+
+  Future<Map<String, dynamic>> startPassportIdentity(String fin) async {
+    final r = await http.post(
+      _u('/v1/passport/identity/start'),
+      headers: _headers,
+      body: jsonEncode({'fin': fin}),
+    );
+    return _decode(r);
+  }
+
+  Future<Map<String, dynamic>> verifyPassportIdentity(String txId, String otpCode) async {
+    final r = await http.post(
+      _u('/v1/passport/identity/verify'),
+      headers: _headers,
+      body: jsonEncode({'transaction_id': txId, 'otp': otpCode}),
+    );
+    final data = await _decode(r);
+    token = data['token'] as String?;
+    return data;
+  }
+
+  Future<Map<String, dynamic>> bindPassport(String appId) async {
+    final r = await http.post(
+      _u('/v1/applications/$appId/identity/bind-passport'),
+      headers: _headers,
     );
     return _decode(r);
   }

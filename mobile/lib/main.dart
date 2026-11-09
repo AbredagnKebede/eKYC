@@ -67,11 +67,16 @@ class _OnboardingShellState extends State<OnboardingShell> {
   String bankQuery = '';
   String locale = 'en';
   String? userRef;
+  String? faydaRefHash;
   bool showPassport = false;
+  bool locked = false;
+  bool appLockEnabled = false;
+  String? appPinHash;
   List<Map<String, dynamic>> myApps = [];
   String selectedTier = 'standard';
   List<String> availableTiers = const ['standard'];
   Map<String, dynamic>? selectedBankSchema;
+  bool passportBound = false;
 
   S get s => S(locale);
 
@@ -177,7 +182,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
   }
 
   bool get _showBack {
-    if (showPassport) return true;
+    if (showPassport) return false;
     return step != StepId.welcome;
   }
 
@@ -185,13 +190,12 @@ class _OnboardingShellState extends State<OnboardingShell> {
     setState(() {
       error = null;
       if (showPassport) {
-        showPassport = false;
-        step = StepId.welcome;
+        // Passport is home after Fayda — back does nothing meaningful
         return;
       }
       switch (step) {
         case StepId.bank:
-          if (myApps.isNotEmpty) {
+          if (passportBound || myApps.isNotEmpty) {
             showPassport = true;
           } else {
             step = StepId.welcome;
@@ -201,7 +205,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
           step = StepId.bank;
           break;
         case StepId.fayda:
-          step = StepId.consent;
+          step = StepId.welcome;
           break;
         case StepId.otp:
           step = StepId.fayda;
@@ -242,6 +246,10 @@ class _OnboardingShellState extends State<OnboardingShell> {
     apiBase = prefs.getString('api_base') ?? kDefaultApiBase;
     locale = prefs.getString('locale') ?? 'en';
     userRef = prefs.getString('user_ref');
+    faydaRefHash = prefs.getString('fayda_ref_hash');
+    appLockEnabled = prefs.getBool('app_lock_enabled') ?? false;
+    appPinHash = prefs.getString('app_pin_hash');
+    passportBound = faydaRefHash != null && faydaRefHash!.isNotEmpty;
     var fp = prefs.getString('device_fp');
     if (fp == null || fp.isEmpty) {
       fp = sha256.convert(utf8.encode('dev-${const Uuid().v4()}')).toString().substring(0, 32);
@@ -253,14 +261,17 @@ class _OnboardingShellState extends State<OnboardingShell> {
     if (savedToken != null && savedToken.isNotEmpty) {
       api.token = savedToken;
     }
-    if (userRef != null && userRef!.isNotEmpty) {
+    if (passportBound && userRef != null && userRef!.isNotEmpty) {
       try {
-        await api.openDeviceSession(userRef!);
+        await api.openDeviceSession(userRef!, faydaRefHash: faydaRefHash);
         await prefs.setString('token', api.token ?? '');
         await _refreshPassport();
-        showPassport = myApps.isNotEmpty;
+        showPassport = true;
+        locked = appLockEnabled && (appPinHash != null && appPinHash!.isNotEmpty);
       } catch (_) {
-        // cold start without server is fine
+        // cold start without server is fine; still show passport shell if bound
+        showPassport = true;
+        locked = appLockEnabled && (appPinHash != null && appPinHash!.isNotEmpty);
       }
     }
     setState(() {});
@@ -269,8 +280,38 @@ class _OnboardingShellState extends State<OnboardingShell> {
   Future<void> _persistSession() async {
     final prefs = await SharedPreferences.getInstance();
     if (userRef != null) await prefs.setString('user_ref', userRef!);
+    if (faydaRefHash != null) await prefs.setString('fayda_ref_hash', faydaRefHash!);
     if (api.token != null) await prefs.setString('token', api.token!);
     await prefs.setString('locale', locale);
+    await prefs.setBool('app_lock_enabled', appLockEnabled);
+    if (appPinHash != null) await prefs.setString('app_pin_hash', appPinHash!);
+  }
+
+  Future<void> _signOut() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('user_ref');
+    await prefs.remove('fayda_ref_hash');
+    await prefs.remove('token');
+    // Keep PIN preference but require Fayda again
+    setState(() {
+      userRef = null;
+      faydaRefHash = null;
+      passportBound = false;
+      showPassport = false;
+      myApps = [];
+      api.token = null;
+      step = StepId.welcome;
+      appId = null;
+      bankId = null;
+      fin = '';
+      otp = '';
+      locked = false;
+      error = null;
+    });
+  }
+
+  String _hashPin(String pin) {
+    return sha256.convert(utf8.encode('ekyc-pin:$pin:${deviceFp ?? ''}')).toString();
   }
 
   Future<void> _refreshPassport() async {
@@ -351,13 +392,27 @@ class _OnboardingShellState extends State<OnboardingShell> {
     }
   }
 
+  Future<void> _startFromWelcome() async {
+    if (passportBound) {
+      await _loadBanksAndStart();
+      return;
+    }
+    setState(() {
+      error = null;
+      step = StepId.fayda;
+    });
+  }
+
   Future<void> _loadBanksAndStart() async {
     await _run(() async {
       final raw = await api.listBanks();
       banks = raw.cast<Map<String, dynamic>>();
       banks.sort((a, b) => (a['bank_name'] as String).compareTo(b['bank_name'] as String));
       if (banks.isEmpty) throw Exception('No partner banks available');
-      setState(() => step = StepId.bank);
+      setState(() {
+        showPassport = false;
+        step = StepId.bank;
+      });
     });
   }
 
@@ -439,6 +494,11 @@ class _OnboardingShellState extends State<OnboardingShell> {
         });
         return;
       }
+      if (passportBound && faydaRefHash != null) {
+        await api.bindPassport(appId!);
+        setState(() => step = StepId.liveness);
+        return;
+      }
       setState(() => step = StepId.fayda);
     });
   }
@@ -446,6 +506,12 @@ class _OnboardingShellState extends State<OnboardingShell> {
   Future<void> _startOtp() async {
     await _run(() async {
       final digits = fin.replaceAll(RegExp(r'\D'), '');
+      if (passportBound == false || appId == null) {
+        final res = await api.startPassportIdentity(digits);
+        txId = res['transaction_id'] as String;
+        setState(() => step = StepId.otp);
+        return;
+      }
       final res = await api.startIdentity(appId!, digits);
       txId = res['transaction_id'] as String;
       setState(() => step = StepId.otp);
@@ -454,6 +520,21 @@ class _OnboardingShellState extends State<OnboardingShell> {
 
   Future<void> _verifyOtp() async {
     await _run(() async {
+      if (appId == null || !passportBound) {
+        final res = await api.verifyPassportIdentity(txId!, otp.trim());
+        userRef = res['user_ref'] as String? ?? userRef;
+        faydaRefHash = res['fayda_ref_hash'] as String?;
+        passportBound = true;
+        await _persistSession();
+        await _refreshPassport();
+        setState(() {
+          showPassport = true;
+          step = StepId.welcome;
+          otp = '';
+          fin = '';
+        });
+        return;
+      }
       await api.verifyOtp(appId!, txId!, otp.trim());
       setState(() => step = StepId.liveness);
     });
@@ -537,7 +618,10 @@ class _OnboardingShellState extends State<OnboardingShell> {
       if (statusText == 'BANK_REJECTED') {
         throw Exception('Bank rejected the application');
       }
-      // PENDING_REVIEW / SUBMITTED_TO_BANK: keep waiting for webhook or ops
+      if (statusText == 'CBS_PENDING_BANK_RELEASE') {
+        setState(() => error = s.t('status.bank_review'));
+      }
+      // PENDING_REVIEW / SUBMITTED_TO_BANK / AWAITING_BANK_OUTBOUND: keep waiting
       await Future<void>.delayed(const Duration(milliseconds: 700));
     }
     // Leave user on status screen instead of hard-failing — Passport can resume.
@@ -604,6 +688,27 @@ class _OnboardingShellState extends State<OnboardingShell> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    if (locked) {
+      return Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: _AppLockGate(
+              title: s.t('lock.title'),
+              hint: s.t('lock.hint'),
+              onUnlock: (pin) {
+                if (_hashPin(pin) == appPinHash) {
+                  setState(() => locked = false);
+                  return true;
+                }
+                return false;
+              },
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         titleSpacing: _showBack ? 0 : 16,
@@ -642,7 +747,7 @@ class _OnboardingShellState extends State<OnboardingShell> {
             ],
             icon: const Icon(Icons.translate_rounded, size: 22),
           ),
-          if (myApps.isNotEmpty && !showPassport)
+          if (passportBound && !showPassport)
             IconButton(
               tooltip: s.t('nav.passport'),
               onPressed: busy
@@ -655,6 +760,21 @@ class _OnboardingShellState extends State<OnboardingShell> {
                       });
                     },
               icon: const Icon(Icons.account_balance_wallet_outlined, size: 22),
+            ),
+          if (passportBound)
+            PopupMenuButton<String>(
+              onSelected: (v) async {
+                if (v == 'signout') {
+                  await _signOut();
+                } else if (v == 'lock') {
+                  await _configureAppLock(context);
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'lock', child: Text(s.t('lock.configure'))),
+                PopupMenuItem(value: 'signout', child: Text(s.t('nav.sign_out'))),
+              ],
+              icon: const Icon(Icons.more_vert, size: 22),
             ),
         ],
         bottom: showPassport
@@ -775,25 +895,77 @@ class _OnboardingShellState extends State<OnboardingShell> {
                 ),
         ),
         FilledButton(
-          onPressed: busy
-              ? null
-              : () {
-                  setState(() {
-                    error = null;
-                    showPassport = false;
-                    step = StepId.welcome;
-                  });
-                },
+          onPressed: busy ? null : _loadBanksAndStart,
           child: Text(s.t('passport.open_bank')),
         ),
       ],
     );
   }
 
+  Future<void> _configureAppLock(BuildContext context) async {
+    final ctrl = TextEditingController();
+    final enabled = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        var on = appLockEnabled;
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return AlertDialog(
+              title: Text(s.t('lock.configure')),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(s.t('lock.enable')),
+                    value: on,
+                    onChanged: (v) => setLocal(() => on = v),
+                  ),
+                  if (on)
+                    TextField(
+                      controller: ctrl,
+                      obscureText: true,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      decoration: InputDecoration(labelText: s.t('lock.pin')),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: Text(s.t('nav.back'))),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, on),
+                  child: Text(s.t('lock.save')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (enabled == null) return;
+    if (enabled) {
+      final pin = ctrl.text.trim();
+      if (pin.length < 4) {
+        setState(() => error = s.t('lock.pin_short'));
+        return;
+      }
+      appLockEnabled = true;
+      appPinHash = _hashPin(pin);
+    } else {
+      appLockEnabled = false;
+      appPinHash = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('app_pin_hash');
+    }
+    await _persistSession();
+    setState(() {});
+  }
+
   Widget _buildStep(BuildContext context) {
     switch (step) {
       case StepId.welcome:
-        return _Welcome(onStart: busy ? null : _loadBanksAndStart);
+        return _Welcome(onStart: busy ? null : _startFromWelcome);
       case StepId.bank:
         return _BankList(
           banks: filteredBanks,
@@ -1565,5 +1737,67 @@ class _Done extends StatelessWidget {
         const SizedBox(height: 8),
       ],
     );
+  }
+}
+
+class _AppLockGate extends StatefulWidget {
+  const _AppLockGate({
+    required this.title,
+    required this.hint,
+    required this.onUnlock,
+  });
+  final String title;
+  final String hint;
+  final bool Function(String pin) onUnlock;
+
+  @override
+  State<_AppLockGate> createState() => _AppLockGateState();
+}
+
+class _AppLockGateState extends State<_AppLockGate> {
+  final ctrl = TextEditingController();
+  String? err;
+
+  @override
+  void dispose() {
+    ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Spacer(),
+        Text(widget.title, style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 8),
+        Text(widget.hint, style: const TextStyle(color: EkycColors.muted)),
+        const SizedBox(height: 20),
+        TextField(
+          controller: ctrl,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          decoration: const InputDecoration(labelText: 'PIN'),
+          onSubmitted: (_) => _try(),
+        ),
+        if (err != null) ...[
+          const SizedBox(height: 8),
+          Text(err!, style: const TextStyle(color: EkycColors.danger)),
+        ],
+        const SizedBox(height: 16),
+        FilledButton(onPressed: _try, child: const Text('Unlock')),
+        const Spacer(),
+      ],
+    );
+  }
+
+  void _try() {
+    if (widget.onUnlock(ctrl.text.trim())) {
+      setState(() => err = null);
+    } else {
+      setState(() => err = 'Incorrect PIN');
+    }
   }
 }
