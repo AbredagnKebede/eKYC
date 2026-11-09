@@ -2,17 +2,38 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.adapters.ethiopian_banks import register_all_ethiopian_banks
+from src.api.platform_auth import require_platform_auth
+from src.models.base import get_db_session
 from src.services.bank_adapter import BankAdapterService, BankNotFoundError
+from src.services.partner_catalog import (
+    ensure_adapter_registered,
+    register_catalog_fallback,
+    seed_partner_banks_from_catalog,
+    sync_adapters_from_db,
+)
 
 router = APIRouter(prefix="/v1/banks", tags=["Banks"])
 
 _bank_service = BankAdapterService()
-register_all_ethiopian_banks(_bank_service)
+# Fallback until lifespan / first request syncs from DB (keeps unit tests working offline).
+register_catalog_fallback(_bank_service)
 
 
 def get_bank_adapter_service() -> BankAdapterService:
+    return _bank_service
+
+
+async def refresh_bank_registry(session: AsyncSession) -> BankAdapterService:
+    """Seed + sync adapters from Postgres; falls back to in-memory catalogue on failure."""
+    try:
+        await seed_partner_banks_from_catalog(session)
+        await sync_adapters_from_db(session, _bank_service, active_only=True)
+        await session.commit()
+    except Exception:
+        if not _bank_service._adapters:
+            register_catalog_fallback(_bank_service)
     return _bank_service
 
 
@@ -36,9 +57,11 @@ class BankMetadataResponse(BaseModel):
 @router.get("", response_model=List[BankMetadataResponse])
 async def list_partner_banks(
     tier: Optional[str] = None,
+    session: AsyncSession = Depends(get_db_session),
     service: BankAdapterService = Depends(get_bank_adapter_service),
 ) -> List[BankMetadataResponse]:
-    """Retrieves the active registry of partner banks, supported tiers, and dynamic JSONSchemas."""
+    """Active partner banks from the persisted catalogue (mobile + portal source of truth)."""
+    await refresh_bank_registry(session)
     banks = service.list_supported_banks()
     items: List[BankMetadataResponse] = []
     for b in banks:
@@ -70,9 +93,14 @@ async def list_partner_banks(
 async def get_partner_bank(
     bank_id: str,
     tier: Optional[str] = None,
+    session: AsyncSession = Depends(get_db_session),
     service: BankAdapterService = Depends(get_bank_adapter_service),
 ) -> BankMetadataResponse:
     """Retrieves metadata and schema specification for a specific partner bank."""
+    try:
+        await ensure_adapter_registered(session, service, bank_id)
+    except BankNotFoundError:
+        await refresh_bank_registry(session)
     try:
         adapter = service.get_adapter(bank_id)
         try:
@@ -107,9 +135,12 @@ class UpdateBankSchemaRequest(BaseModel):
 async def update_partner_bank_schema(
     bank_id: str,
     req: UpdateBankSchemaRequest,
+    session: AsyncSession = Depends(get_db_session),
     service: BankAdapterService = Depends(get_bank_adapter_service),
+    _claims: Dict[str, Any] = Depends(require_platform_auth),
 ) -> BankMetadataResponse:
-    """Updates the active JSONSchema definition for a partner bank dynamically."""
+    """Platform-only: update JSONSchema for a partner bank."""
+    await refresh_bank_registry(session)
     try:
         service.update_dynamic_schema(bank_id, req.dynamic_schema)
         adapter = service.get_adapter(bank_id)

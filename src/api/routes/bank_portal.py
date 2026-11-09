@@ -14,13 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.middleware import create_access_token, decode_access_token
 from src.api.routes.applications import get_onboarding_service
-from src.adapters.ethiopian_banks import register_all_ethiopian_banks
 from src.models.application import ApplicationStatus
-from src.models.bank_portal import BankStaff, BankStaffRole
+from src.models.bank_portal import BankStaff, BankStaffRole, PartnerBank
 from src.models.base import get_db_session
 from src.security.passwords import default_staff_password, hash_password, verify_password
 from src.services.audit import AuditService
-from src.services.bank_adapter import BankAdapterService
 from src.services.bank_routing import BankRoutingService
 from src.services.onboarding import ApplicationNotFoundError, OnboardingService
 from src.state.machine import StateGuardError, StateTransitionError
@@ -29,8 +27,6 @@ router = APIRouter(prefix="/v1/bank-portal", tags=["BankPortal"])
 _bearer = HTTPBearer(auto_error=False)
 _audit = AuditService()
 _routing = BankRoutingService(audit=_audit)
-_banks = BankAdapterService()
-register_all_ethiopian_banks(_banks)
 
 PORTAL_TOKEN_MINUTES = int(os.getenv("BANK_PORTAL_TOKEN_MINUTES", "480"))
 
@@ -181,10 +177,15 @@ async def portal_login(
     req: LoginRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> LoginResponse:
-    try:
-        _banks.get_adapter(req.bank_id)
-    except Exception:
-        raise HTTPException(status_code=404, detail=f"Unknown bank '{req.bank_id}'.")
+    partner = await session.get(PartnerBank, req.bank_id)
+    if partner is None or not partner.active:
+        # Fall back to public registry refresh for first-boot / seed races.
+        from src.api.routes.banks import refresh_bank_registry
+
+        await refresh_bank_registry(session)
+        partner = await session.get(PartnerBank, req.bank_id)
+        if partner is None or not partner.active:
+            raise HTTPException(status_code=404, detail=f"Unknown bank '{req.bank_id}'.")
 
     email = req.email.lower().strip()
     stmt = select(BankStaff).where(
@@ -523,11 +524,14 @@ async def list_audit(
 
 
 async def bootstrap_bank_portal_staff(session: AsyncSession) -> int:
-    """Seed one Super Admin per catalog bank when none exist."""
+    """Seed one Super Admin per partner bank when none exist."""
+    from src.services.partner_catalog import list_partner_bank_rows, seed_partner_banks_from_catalog
+
+    await seed_partner_banks_from_catalog(session)
     password = default_staff_password()
     created = 0
-    for meta in _banks.list_supported_banks():
-        bank_id = meta["bank_id"]
+    for row in await list_partner_bank_rows(session, active_only=True):
+        bank_id = row.bank_id
         await _routing.get_or_create_settings(session, bank_id)
         existing = (
             await session.execute(

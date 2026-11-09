@@ -1,12 +1,13 @@
-"""Bank portal settings, staff RBAC, and passport identity persistence."""
+"""Bank portal settings, staff RBAC, partner catalog, and passport identity."""
 from __future__ import annotations
 
 import enum
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, List, Optional
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum, Index, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.application import utc_now
@@ -17,6 +18,63 @@ class BankStaffRole(str, enum.Enum):
     SUPER_ADMIN = "SUPER_ADMIN"
     ADMIN = "ADMIN"
     EMPLOYEE = "EMPLOYEE"
+
+
+class PartnerBank(Base):
+    """Persisted partner bank catalogue (source of truth for mobile + portals)."""
+
+    __tablename__ = "partner_banks"
+
+    bank_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    bank_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    short_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    hq_city: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    supported_tiers: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list)
+    use_legacy_awash: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    def __init__(self, **kwargs: Any) -> None:
+        if "supported_tiers" not in kwargs:
+            kwargs["supported_tiers"] = ["standard"]
+        if "use_legacy_awash" not in kwargs:
+            kwargs["use_legacy_awash"] = False
+        if "active" not in kwargs:
+            kwargs["active"] = True
+        now = utc_now()
+        if "created_at" not in kwargs:
+            kwargs["created_at"] = now
+        if "updated_at" not in kwargs:
+            kwargs["updated_at"] = now
+        super().__init__(**kwargs)
+
+
+class PlatformOperator(Base):
+    """Fayda/eKYC platform operator who onboards bank customers."""
+
+    __tablename__ = "platform_operators"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False
+    )
+
+    def __init__(self, **kwargs: Any) -> None:
+        if "id" not in kwargs:
+            kwargs["id"] = uuid.uuid4()
+        if "active" not in kwargs:
+            kwargs["active"] = True
+        if "created_at" not in kwargs:
+            kwargs["created_at"] = utc_now()
+        super().__init__(**kwargs)
 
 
 class BankSettings(Base):

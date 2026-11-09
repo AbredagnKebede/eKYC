@@ -43,14 +43,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from src.models.base import async_session_factory, init_models
         from src.models.schema_ensure import ensure_schema_extensions
         from src.api.routes.bank_portal import bootstrap_bank_portal_staff
+        from src.api.routes.platform import bootstrap_platform_operators
+        from src.api.routes.banks import refresh_bank_registry
 
         await init_models()
         await ensure_schema_extensions()
         logger.info("Database tables initialized.")
         async with async_session_factory() as session:
             n = await bootstrap_bank_portal_staff(session)
+            p = await bootstrap_platform_operators(session)
             await session.commit()
             logger.info("Bank portal bootstrap: %s new super admins", n)
+            logger.info("Platform operator bootstrap: %s new operators", p)
+            await refresh_bank_registry(session)
+            logger.info("Partner bank catalogue synced into adapter registry.")
     except Exception as exc:
         logger.warning("Database initialization deferred: %s", exc)
     yield
@@ -198,11 +204,13 @@ def create_app() -> FastAPI:
     # 6. Mount API Routers
     from src.api.routes.ops import router as ops_router
     from src.api.routes.bank_portal import router as bank_portal_router
+    from src.api.routes.platform import router as platform_router
 
     app.include_router(banks_router)
     app.include_router(applications_router)
     app.include_router(ops_router)
     app.include_router(bank_portal_router)
+    app.include_router(platform_router)
 
     # 7. Tester landing page + APK downloads + bank portal
     static_root = Path(__file__).resolve().parents[2] / "static"

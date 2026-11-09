@@ -8,7 +8,14 @@ from src.models.application import (
     BankSubmission,
 )
 from src.models.audit import AuditLog
-from src.models.bank_portal import BankSettings, BankStaff, BankStaffRole, PassportIdentity
+from src.models.bank_portal import (
+    BankSettings,
+    BankStaff,
+    BankStaffRole,
+    PartnerBank,
+    PassportIdentity,
+    PlatformOperator,
+)
 
 __all__ = [
     "Base",
@@ -27,5 +34,7 @@ __all__ = [
     "BankSettings",
     "BankStaff",
     "BankStaffRole",
+    "PartnerBank",
+    "PlatformOperator",
     "PassportIdentity",
 ]

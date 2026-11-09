@@ -12,7 +12,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from src.adapters.ethiopian_banks import register_all_ethiopian_banks
 from src.clients.bank_cbs_client import (
     BankCBSAuthError,
     BankCBSCircuitBreakerOpenError,
@@ -81,13 +80,15 @@ class BankSubmissionWorker:
         self._running = False
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
 
-        # Setup adapter service with full Ethiopian commercial bank catalogue
+        self._cbs_client = cbs_client or BankCBSClient()
+        # Setup adapter service; DB sync happens per-job so newly onboarded banks work.
         if adapter_service:
             self.adapter_service = adapter_service
         else:
+            from src.services.partner_catalog import register_catalog_fallback
+
             self.adapter_service = BankAdapterService()
-            cbs = cbs_client or BankCBSClient()
-            register_all_ethiopian_banks(self.adapter_service, client=cbs)
+            register_catalog_fallback(self.adapter_service, client=self._cbs_client)
 
     async def emit_heartbeat(self) -> None:
         """Emits worker heartbeat status to Redis with 30s TTL."""
@@ -201,6 +202,14 @@ class BankSubmissionWorker:
             idempotency_key = app.idempotency_hash or f"idem_{app.bank_id}_{app.id}"
 
             try:
+                from src.services.partner_catalog import ensure_adapter_registered
+
+                await ensure_adapter_registered(
+                    session,
+                    self.adapter_service,
+                    app.bank_id,
+                    client=self._cbs_client,
+                )
                 submission_result = await self.adapter_service.submit(
                     bank_id=app.bank_id,
                     application_data=application_data,
