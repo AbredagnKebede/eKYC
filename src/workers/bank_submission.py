@@ -214,8 +214,22 @@ class BankSubmissionWorker:
                 sub_record.account_number = account_num
                 sub_record.bank_reference = bank_ref
 
+                from src.services.bank_routing import BankRoutingService
+
+                _, ff_inbound = await BankRoutingService(audit=self.audit_service).get_flags(
+                    session, app.bank_id
+                )
                 if res_status in ("SUCCESS", "ACCOUNT_OPENED") and account_num:
-                    app.status = ApplicationStatus.ACCOUNT_OPENED
+                    if ff_inbound:
+                        app.status = ApplicationStatus.ACCOUNT_OPENED
+                    else:
+                        app.status = ApplicationStatus.CBS_PENDING_BANK_RELEASE
+                elif res_status in ("REJECTED", "BANK_REJECTED"):
+                    if ff_inbound:
+                        app.status = ApplicationStatus.BANK_REJECTED
+                    else:
+                        app.status = ApplicationStatus.CBS_PENDING_BANK_RELEASE
+                        sub_record.bank_status = "rejected"
                 else:
                     # Async bank review or accepted
                     app.status = ApplicationStatus.SUBMITTED_TO_BANK
@@ -231,6 +245,8 @@ class BankSubmissionWorker:
                         "account_number": account_num,
                         "bank_reference": bank_ref,
                         "status": res_status,
+                        "ff_inbound": ff_inbound,
+                        "app_status": app.status.value,
                     },
                 )
 

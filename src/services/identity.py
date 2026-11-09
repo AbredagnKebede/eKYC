@@ -194,6 +194,7 @@ class IdentityService:
             snapshot.verification_method = VerificationMethod.OTP
 
         app.status = ApplicationStatus.ID_VERIFIED
+        app.fayda_ref_hash = fayda_ref_hash
         app.updated_at = now
 
         await self.audit_service.record_event(

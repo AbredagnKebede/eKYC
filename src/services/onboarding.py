@@ -73,6 +73,7 @@ class OnboardingService:
         session: AsyncSession,
         user_ref: str,
         limit: int = 50,
+        fayda_ref_hash: Optional[str] = None,
     ) -> List[Application]:
         """Passport: all journeys for one applicant profile, newest first."""
         stmt = (
@@ -82,10 +83,16 @@ class OnboardingService:
                 selectinload(Application.identity_snapshot),
                 selectinload(Application.submissions),
             )
-            .where(Application.user_ref == user_ref)
             .order_by(Application.created_at.desc())
             .limit(limit)
         )
+        if fayda_ref_hash:
+            stmt = stmt.where(
+                (Application.user_ref == user_ref)
+                | (Application.fayda_ref_hash == fayda_ref_hash)
+            )
+        else:
+            stmt = stmt.where(Application.user_ref == user_ref)
         result = await session.execute(stmt)
         return list(result.scalars().all())
 
@@ -99,6 +106,8 @@ class OnboardingService:
         pending = (
             ApplicationStatus.SUBMITTED_TO_BANK,
             ApplicationStatus.BANK_ACCEPTED,
+            ApplicationStatus.AWAITING_BANK_OUTBOUND,
+            ApplicationStatus.CBS_PENDING_BANK_RELEASE,
         )
         stmt = (
             select(Application)
@@ -112,6 +121,42 @@ class OnboardingService:
         result = await session.execute(stmt)
         return list(result.scalars().all())
 
+    async def list_outbound_queue(
+        self,
+        session: AsyncSession,
+        bank_id: str,
+        limit: int = 100,
+    ) -> List[Application]:
+        stmt = (
+            select(Application)
+            .options(selectinload(Application.submissions))
+            .where(
+                Application.bank_id == bank_id,
+                Application.status == ApplicationStatus.AWAITING_BANK_OUTBOUND,
+            )
+            .order_by(Application.updated_at.asc())
+            .limit(limit)
+        )
+        return list((await session.execute(stmt)).scalars().all())
+
+    async def list_inbound_queue(
+        self,
+        session: AsyncSession,
+        bank_id: str,
+        limit: int = 100,
+    ) -> List[Application]:
+        stmt = (
+            select(Application)
+            .options(selectinload(Application.submissions))
+            .where(
+                Application.bank_id == bank_id,
+                Application.status == ApplicationStatus.CBS_PENDING_BANK_RELEASE,
+            )
+            .order_by(Application.updated_at.asc())
+            .limit(limit)
+        )
+        return list((await session.execute(stmt)).scalars().all())
+
     async def create_application(
         self,
         session: AsyncSession,
@@ -120,6 +165,7 @@ class OnboardingService:
         tier: str = "standard",
         duration_minutes: int = 60,
         actor_id: str = "SYSTEM",
+        fayda_ref_hash: Optional[str] = None,
     ) -> Application:
         """Initializes a new onboarding session in DRAFT state."""
         app = Application(
@@ -127,6 +173,7 @@ class OnboardingService:
             bank_id=bank_id,
             tier=tier,
             status=ApplicationStatus.DRAFT,
+            fayda_ref_hash=fayda_ref_hash,
             expires_at=utc_now() + timedelta(minutes=duration_minutes),
         )
         session.add(app)
@@ -197,6 +244,7 @@ class OnboardingService:
         snapshot.application_id = app.id
         session.add(snapshot)
         app.identity_snapshot = snapshot
+        app.fayda_ref_hash = snapshot.fayda_ref_hash
         app.status = ApplicationStatus.ID_VERIFIED
         await session.flush()
 
@@ -305,12 +353,22 @@ class OnboardingService:
         signature: str,
         actor_id: str = "CUSTOMER",
     ) -> Application:
-        """Finalizes application with signature, sets SUBMITTED_TO_BANK, and publishes queue event."""
+        """Finalizes application with signature; routes via Fast Forward outbound flag."""
+        from src.services.bank_routing import BankRoutingService
+
         app = await self.get_application(session, application_id, for_update=True)
-        ApplicationStateMachine.validate_transition(app.status, ApplicationStatus.SUBMITTED_TO_BANK)
         ApplicationStateMachine.check_submission_guard(signature)
 
-        app.status = ApplicationStatus.SUBMITTED_TO_BANK
+        routing = BankRoutingService(audit=self.audit_service)
+        ff_outbound, _ = await routing.get_flags(session, app.bank_id)
+        target = (
+            ApplicationStatus.SUBMITTED_TO_BANK
+            if ff_outbound
+            else ApplicationStatus.AWAITING_BANK_OUTBOUND
+        )
+        ApplicationStateMachine.validate_transition(app.status, target)
+
+        app.status = target
         idem_key = f"idem_{app.id}_{app.bank_id}"
         app.idempotency_hash = idem_key
 
@@ -320,30 +378,38 @@ class OnboardingService:
                 submission = s
                 break
 
-        if submission:
+        if submission is None:
+            submission = BankSubmission(
+                application_id=app.id,
+                bank_id=app.bank_id,
+                dynamic_fields={},
+            )
+            session.add(submission)
+            app.submissions.append(submission)
+            dynamic_data: Dict[str, Any] = {}
+        else:
+            dynamic_data = submission.dynamic_fields or {}
+
+        if ff_outbound:
             submission.sent_at = utc_now()
             submission.last_attempt_at = utc_now()
-            dynamic_data = submission.dynamic_fields
+            event = ApplicationSubmittedEvent.create(
+                application_id=str(app.id),
+                bank_id=app.bank_id,
+                secret_key=self.signing_key,
+                tier=app.tier,
+                idempotency_key=idem_key,
+                dynamic_fields=dynamic_data,
+            )
+            await self.queue.enqueue(
+                application_id=str(app.id),
+                bank_id=app.bank_id,
+                payload=event.model_dump(),
+                idempotency_key=idem_key,
+            )
+            payload_sig = event.payload_signature
         else:
-            dynamic_data = {}
-
-        # Construct signed event payload
-        event = ApplicationSubmittedEvent.create(
-            application_id=str(app.id),
-            bank_id=app.bank_id,
-            secret_key=self.signing_key,
-            tier=app.tier,
-            idempotency_key=idem_key,
-            dynamic_fields=dynamic_data,
-        )
-
-        # Publish event to persistent Redis Streams queue
-        await self.queue.enqueue(
-            application_id=str(app.id),
-            bank_id=app.bank_id,
-            payload=event.model_dump(),
-            idempotency_key=idem_key,
-        )
+            payload_sig = None
 
         await session.flush()
 
@@ -356,9 +422,68 @@ class OnboardingService:
             payload={
                 "bank_id": app.bank_id,
                 "tier": app.tier,
-                "payload_signature": event.payload_signature,
+                "ff_outbound": ff_outbound,
+                "status": target.value,
+                "payload_signature": payload_sig,
             },
         )
+        return app
+
+    async def enqueue_outbound_to_cbs(
+        self,
+        session: AsyncSession,
+        application_id: uuid.UUID,
+        actor_id: str = "BANK",
+        edited_fields: Optional[Dict[str, Any]] = None,
+    ) -> Application:
+        """Staff confirms outbound queue item and forwards to CBS."""
+        app = await self.get_application(session, application_id, for_update=True)
+        ApplicationStateMachine.validate_transition(
+            app.status, ApplicationStatus.SUBMITTED_TO_BANK
+        )
+        if edited_fields:
+            app.bank_edited_fields = edited_fields
+            for s in app.submissions:
+                if s.bank_id == app.bank_id:
+                    merged = dict(s.dynamic_fields or {})
+                    merged.update(edited_fields)
+                    s.dynamic_fields = merged
+                    break
+
+        app.status = ApplicationStatus.SUBMITTED_TO_BANK
+        idem_key = app.idempotency_hash or f"idem_{app.id}_{app.bank_id}"
+        app.idempotency_hash = idem_key
+        dynamic_data: Dict[str, Any] = {}
+        for s in app.submissions:
+            if s.bank_id == app.bank_id:
+                s.sent_at = utc_now()
+                s.last_attempt_at = utc_now()
+                dynamic_data = s.dynamic_fields or {}
+                break
+
+        event = ApplicationSubmittedEvent.create(
+            application_id=str(app.id),
+            bank_id=app.bank_id,
+            secret_key=self.signing_key,
+            tier=app.tier,
+            idempotency_key=idem_key,
+            dynamic_fields=dynamic_data,
+        )
+        await self.queue.enqueue(
+            application_id=str(app.id),
+            bank_id=app.bank_id,
+            payload=event.model_dump(),
+            idempotency_key=f"{idem_key}_staff",
+        )
+        await self.audit_service.record_event(
+            session=session,
+            actor_type="BANK",
+            actor_id=actor_id,
+            action="OUTBOUND_SENT",
+            application_id=app.id,
+            payload={"bank_id": app.bank_id, "edited": bool(edited_fields)},
+        )
+        await session.flush()
         return app
 
     async def update_bank_status(
@@ -369,12 +494,25 @@ class OnboardingService:
         account_number: Optional[str] = None,
         bank_reference: Optional[str] = None,
         actor_id: str = "WORKER",
+        respect_inbound_ff: bool = True,
     ) -> Application:
         """Reconciles asynchronous callback or worker status mutation."""
-        app = await self.get_application(session, application_id)
-        ApplicationStateMachine.validate_transition(app.status, new_status)
+        from src.services.bank_routing import BankRoutingService
 
-        app.status = new_status
+        app = await self.get_application(session, application_id)
+        resolved = new_status
+        if respect_inbound_ff and new_status in (
+            ApplicationStatus.ACCOUNT_OPENED,
+            ApplicationStatus.BANK_REJECTED,
+        ):
+            _, ff_inbound = await BankRoutingService(audit=self.audit_service).get_flags(
+                session, app.bank_id
+            )
+            if not ff_inbound:
+                resolved = ApplicationStatus.CBS_PENDING_BANK_RELEASE
+
+        ApplicationStateMachine.validate_transition(app.status, resolved)
+        app.status = resolved
 
         target_sub = None
         for sub in app.submissions:
@@ -383,12 +521,17 @@ class OnboardingService:
                 break
 
         if target_sub is None:
+            bank_status = "pending"
+            if resolved == ApplicationStatus.ACCOUNT_OPENED:
+                bank_status = "opened"
+            elif new_status == ApplicationStatus.BANK_REJECTED:
+                bank_status = "rejected"
             target_sub = BankSubmission(
                 application_id=app.id,
                 bank_id=app.bank_id,
                 account_number=account_number,
                 bank_reference=bank_reference,
-                bank_status="opened" if new_status == ApplicationStatus.ACCOUNT_OPENED else "pending",
+                bank_status=bank_status,
             )
             session.add(target_sub)
             app.submissions.append(target_sub)
@@ -397,10 +540,15 @@ class OnboardingService:
                 target_sub.account_number = account_number
             if bank_reference:
                 target_sub.bank_reference = bank_reference
-            if new_status == ApplicationStatus.ACCOUNT_OPENED:
+            if resolved == ApplicationStatus.ACCOUNT_OPENED:
                 target_sub.bank_status = "opened"
             elif new_status == ApplicationStatus.BANK_REJECTED:
                 target_sub.bank_status = "rejected"
+            elif resolved == ApplicationStatus.CBS_PENDING_BANK_RELEASE:
+                if new_status == ApplicationStatus.BANK_REJECTED:
+                    target_sub.bank_status = "rejected"
+                elif account_number:
+                    target_sub.bank_status = "opened_pending_release"
 
         await session.flush()
 
@@ -411,11 +559,71 @@ class OnboardingService:
             action="STATUS_UPDATED",
             application_id=app.id,
             payload={
-                "new_status": new_status.value,
+                "requested_status": new_status.value,
+                "new_status": resolved.value,
                 "account_number": account_number,
                 "bank_reference": bank_reference,
             },
         )
+        return app
+
+    async def release_inbound(
+        self,
+        session: AsyncSession,
+        application_id: uuid.UUID,
+        *,
+        release_status: ApplicationStatus,
+        account_number: Optional[str] = None,
+        bank_reference: Optional[str] = None,
+        reject_reason: Optional[str] = None,
+        edited_fields: Optional[Dict[str, Any]] = None,
+        actor_id: str = "BANK",
+    ) -> Application:
+        """Staff releases a CBS result held in the inbound queue to the customer app."""
+        if release_status not in (
+            ApplicationStatus.ACCOUNT_OPENED,
+            ApplicationStatus.BANK_REJECTED,
+        ):
+            raise StateGuardError(
+                release_status,
+                "Inbound release must be ACCOUNT_OPENED or BANK_REJECTED.",
+            )
+        app = await self.get_application(session, application_id, for_update=True)
+        ApplicationStateMachine.validate_transition(app.status, release_status)
+        if edited_fields:
+            app.bank_edited_fields = {
+                **(app.bank_edited_fields or {}),
+                **edited_fields,
+            }
+        app.status = release_status
+        for sub in app.submissions:
+            if sub.bank_id != app.bank_id:
+                continue
+            if account_number:
+                sub.account_number = account_number
+            if bank_reference:
+                sub.bank_reference = bank_reference
+            if release_status == ApplicationStatus.ACCOUNT_OPENED:
+                sub.bank_status = "opened"
+            else:
+                sub.bank_status = "rejected"
+                if reject_reason:
+                    sub.error_message = reject_reason
+            break
+        await self.audit_service.record_event(
+            session=session,
+            actor_type="BANK",
+            actor_id=actor_id,
+            action="INBOUND_RELEASED",
+            application_id=app.id,
+            payload={
+                "bank_id": app.bank_id,
+                "status": release_status.value,
+                "account_number": account_number,
+                "reject_reason": reject_reason,
+            },
+        )
+        await session.flush()
         return app
 
     async def expire_inactive_applications(self, session: AsyncSession) -> int:
@@ -437,6 +645,9 @@ class OnboardingService:
                     ApplicationStatus.BANK_REJECTED,
                     ApplicationStatus.CANCELLED,
                     ApplicationStatus.EXPIRED,
+                    ApplicationStatus.AWAITING_BANK_OUTBOUND,
+                    ApplicationStatus.CBS_PENDING_BANK_RELEASE,
+                    ApplicationStatus.SUBMITTED_TO_BANK,
                 ]),
             )
         )
