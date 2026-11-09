@@ -1,0 +1,244 @@
+:root {
+  --ink: #0b1f2a;
+  --ink-soft: #1a3a4a;
+  --paper: #f3efe6;
+  --paper-2: #e8e1d4;
+  --teal: #0d6e6e;
+  --teal-deep: #085555;
+  --amber: #c47a2c;
+  --danger: #9b2c2c;
+  --line: rgba(11, 31, 42, 0.12);
+  --shadow: 0 18px 50px rgba(11, 31, 42, 0.12);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  line-height: 1.45;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(13, 110, 110, 0.18), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(196, 122, 44, 0.12), transparent 50%),
+    linear-gradient(180deg, #f7f3eb 0%, #ebe4d6 100%);
+}
+
+h1,
+h2,
+h3 {
+  font-family: 'Fraunces', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.4rem;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.brand-mark {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  color: var(--ink);
+  margin-bottom: 0.25rem;
+}
+
+.brand-sub {
+  color: var(--ink-soft);
+  opacity: 0.8;
+  max-width: 36rem;
+}
+
+.login-panel {
+  margin-top: 2.5rem;
+  max-width: 420px;
+  padding: 1.75rem;
+  border: 1px solid var(--line);
+  background: rgba(255, 252, 246, 0.72);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+  animation: rise 0.55s ease-out both;
+}
+
+.login-panel label {
+  display: block;
+  margin: 0.9rem 0 0.35rem;
+  font-size: 0.92rem;
+}
+
+.login-panel input,
+.login-panel select,
+.stack input,
+.stack select {
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  color: var(--ink);
+}
+
+.btn {
+  appearance: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.7rem 1.1rem;
+  background: var(--teal);
+  color: #f8fffe;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.btn:hover {
+  background: var(--teal-deep);
+  transform: translateY(-1px);
+}
+
+.btn.secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.btn.danger {
+  background: var(--danger);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 1.75rem;
+  animation: rise 0.45s ease-out both;
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.nav button {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-soft);
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+}
+
+.nav button.active {
+  border-color: var(--line);
+  background: rgba(255, 252, 246, 0.8);
+  color: var(--ink);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+
+.metric {
+  padding: 1rem 1.1rem;
+  border-left: 3px solid var(--teal);
+  background: rgba(255, 252, 246, 0.65);
+  animation: rise 0.5s ease-out both;
+}
+
+.metric .n {
+  font-family: 'Fraunces', Georgia, serif;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: rgba(255, 252, 246, 0.7);
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.75rem 0.65rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  font-size: 0.92rem;
+}
+
+.table th {
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.err {
+  color: var(--danger);
+  margin: 0.75rem 0;
+}
+
+.ok {
+  color: var(--teal-deep);
+  margin: 0.75rem 0;
+}
+
+.stack {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 520px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .table {
+    display: block;
+    overflow-x: auto;
+  }
+}
