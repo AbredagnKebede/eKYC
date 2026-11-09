@@ -1,15 +1,87 @@
+# Python
 .venv/
 __pycache__/
-*.pyc
-.pytest_cache/
-.coverage
+*.py[cod]
+*$py.class
 *.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+dist/
+build/
+
+# Env / secrets
 .env
+.env.*
+!.env.example
+*.pem
+
+# Flutter / Android
 mobile/.dart_tool/
 mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
 mobile/android/.gradle/
 mobile/android/app/build/
-mobile/.flutter-plugins-dependencies
+mobile/android/local.properties
+mobile/ios/Pods/
+mobile/ios/.symlinks/
 *.iml
 *.apk
 !static/releases/.gitkeep
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+bank-portal/node_modules/
+bank-portal/.next/
+bank-portal/out/
+**/npm-debug.log*
+**/yarn-error.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Cursor / local agent tooling (keep skills via .cursor/skills if committed intentionally)
+.cursor/projects/
+
+# VibeArch / agent pipeline scaffolding (local only)
+.agents/
+.pipeline/
+.vibearch/
+VibeArch/
+developerStrategies/
+journeys/
+loops/
+research/
+scratch/
+AGENTS.md
+Idea_scaff.md
+Lessons.md
+progress.md
+roadmap.md
+IMPROVEMENT_PLAN.md
+dependency_list.md
+run_state.json
+system_graph.json
+topology_manifest.json
+release_evidence/
+smoke_test_report.md
+*_report.md
+!DEPLOY_TESTERS.md
+
+# Abandoned web scaffold (mobile + bank-portal are the product UIs)
+ui/
+
+# Misc local dumps
+*.log
+tmp/
+.temp/

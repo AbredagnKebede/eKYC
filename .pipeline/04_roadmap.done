@@ -1,4 +1,0 @@
-STAGE=4
-AGENT=roadmap
-COMPLETED_AT=2026-10-29T13:02:00Z
-GATE=topology_validator-check_dag-check_skills-passed

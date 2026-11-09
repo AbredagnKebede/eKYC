@@ -1,4 +1,0 @@
-STAGE=4.5
-AGENT=journey_mapper
-COMPLETED_AT=2026-10-29T12:55:00Z
-GATE=check_journeys-passed

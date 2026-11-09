@@ -1,4 +1,0 @@
-STAGE=3
-AGENT=architect
-COMPLETED_AT=2026-10-28T15:42:45Z
-GATE=verify_spec-passed

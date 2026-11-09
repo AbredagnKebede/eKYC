@@ -1,8 +1,0 @@
-{
-  "bank_submission_queue": {
-    "consumers": 1,
-    "group": "bank_submission_workers",
-    "active_workers": ["ekyc-worker"],
-    "pending": 0
-  }
-}

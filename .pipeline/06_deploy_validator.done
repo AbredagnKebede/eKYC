@@ -1,6 +1,0 @@
-stage: 6
-name: deploy_validator
-verified_at: 2026-11-03T02:13:30Z
-gate_script: .vibearch/scripts/check_release_evidence.py
-gate_exit_code: 0
-status: verified_and_signed_off
