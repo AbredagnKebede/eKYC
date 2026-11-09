@@ -4,27 +4,17 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   clearMeta,
+  fetchPublicBanks,
   loadMeta,
   portalApi,
   saveMeta,
 } from '@/lib/api'
-import type { AuditItem, QueueItem, StaffItem } from '@/lib/api'
+import type { AuditItem, PublicBank, QueueItem, StaffItem } from '@/lib/api'
 
 type Tab = 'dashboard' | 'outbound' | 'inbound' | 'settings' | 'staff' | 'audit'
 
-const BANKS: { id: string; name: string }[] = [
-  { id: 'bank_cbe', name: 'Commercial Bank of Ethiopia' },
-  { id: 'bank_awash', name: 'Awash Bank' },
-  { id: 'bank_abyssinia', name: 'Bank of Abyssinia' },
-  { id: 'bank_dashen', name: 'Dashen Bank' },
-  { id: 'bank_wegagen', name: 'Wegagen Bank' },
-  { id: 'bank_hibret', name: 'Hibret Bank' },
-  { id: 'bank_coop', name: 'Cooperative Bank of Oromia' },
-  { id: 'bank_nib', name: 'NIB International Bank' },
-]
-
-function bankLabel(id: string) {
-  return BANKS.find((b) => b.id === id)?.name ?? id
+function bankLabel(id: string, banks: PublicBank[]) {
+  return banks.find((b) => b.bank_id === id)?.bank_name ?? id
 }
 
 function shortId(id: string) {
@@ -46,6 +36,8 @@ export default function PortalApp() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [bankId, setBankId] = useState('')
+  const [banks, setBanks] = useState<PublicBank[]>([])
+  const [banksLoading, setBanksLoading] = useState(true)
 
   const [dash, setDash] = useState<{
     outbound_count: number
@@ -66,6 +58,19 @@ export default function PortalApp() {
   useEffect(() => {
     setMeta(loadMeta())
     setHydrated(true)
+    void (async () => {
+      setBanksLoading(true)
+      try {
+        const list = await fetchPublicBanks()
+        setBanks(list)
+        if (list.length && !bankId) setBankId(list[0].bank_id)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not load partner banks.')
+      } finally {
+        setBanksLoading(false)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const canManageSettings = useMemo(
@@ -179,13 +184,14 @@ export default function PortalApp() {
                 onChange={(e) => setBankId(e.target.value)}
                 required
                 autoComplete="organization"
+                disabled={banksLoading || banks.length === 0}
               >
                 <option value="" disabled>
-                  Select your bank
+                  {banksLoading ? 'Loading banks…' : 'Select your bank'}
                 </option>
-                {BANKS.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
+                {banks.map((b) => (
+                  <option key={b.bank_id} value={b.bank_id}>
+                    {b.bank_name}
                   </option>
                 ))}
               </select>
@@ -248,7 +254,7 @@ export default function PortalApp() {
         <div>
           <h1 className="brand-mark">Fayda Bank Portal</h1>
           <div className="topbar-meta">
-            <span className="pill muted">{bankLabel(meta.bank_id)}</span>
+            <span className="pill muted">{bankLabel(meta.bank_id, banks)}</span>
             <span className="pill">{roleLabel(meta.role)}</span>
           </div>
         </div>
@@ -277,7 +283,7 @@ export default function PortalApp() {
         <section>
           <div className="section-head">
             <h2>Overview</h2>
-            <p>Queue depth and Fast Forward status for {bankLabel(meta.bank_id)}.</p>
+            <p>Queue depth and Fast Forward status for {bankLabel(meta.bank_id, banks)}.</p>
           </div>
 
           {dash ? (

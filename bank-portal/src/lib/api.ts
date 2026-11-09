@@ -1,11 +1,39 @@
 const TOKEN_KEY = 'bank_portal_token'
 const META_KEY = 'bank_portal_meta'
+const PLATFORM_TOKEN_KEY = 'platform_portal_token'
+const PLATFORM_META_KEY = 'platform_portal_meta'
 
 export type PortalMeta = {
   token: string
   bank_id: string
   role: string
   email: string
+}
+
+export type PlatformMeta = {
+  token: string
+  email: string
+  role: string
+}
+
+export type PublicBank = {
+  bank_id: string
+  bank_name: string
+  short_code?: string | null
+  hq_city?: string | null
+  supported_tiers: string[]
+}
+
+export type PartnerBankRow = {
+  bank_id: string
+  bank_name: string
+  short_code: string
+  hq_city?: string | null
+  supported_tiers: string[]
+  active: boolean
+  use_legacy_awash?: boolean
+  created_at?: string | null
+  updated_at?: string | null
 }
 
 function apiBase(): string {
@@ -33,13 +61,36 @@ export function clearMeta() {
   localStorage.removeItem(META_KEY)
 }
 
-async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const meta = loadMeta()
+export function loadPlatformMeta(): PlatformMeta | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(PLATFORM_META_KEY)
+    return raw ? (JSON.parse(raw) as PlatformMeta) : null
+  } catch {
+    return null
+  }
+}
+
+export function savePlatformMeta(meta: PlatformMeta) {
+  localStorage.setItem(PLATFORM_TOKEN_KEY, meta.token)
+  localStorage.setItem(PLATFORM_META_KEY, JSON.stringify(meta))
+}
+
+export function clearPlatformMeta() {
+  localStorage.removeItem(PLATFORM_TOKEN_KEY)
+  localStorage.removeItem(PLATFORM_META_KEY)
+}
+
+async function requestJson<T>(
+  path: string,
+  init: RequestInit = {},
+  token?: string | null,
+): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string> | undefined),
   }
-  if (meta?.token) headers.Authorization = `Bearer ${meta.token}`
+  if (token) headers.Authorization = `Bearer ${token}`
   const url = `${apiBase()}${path}`
   const res = await fetch(url, { ...init, headers })
   if (!res.ok) {
@@ -54,6 +105,18 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
+}
+
+async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return requestJson<T>(path, init, loadMeta()?.token)
+}
+
+async function platformApiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return requestJson<T>(path, init, loadPlatformMeta()?.token)
+}
+
+export async function fetchPublicBanks(): Promise<PublicBank[]> {
+  return requestJson<PublicBank[]>('/v1/banks')
 }
 
 export const portalApi = {
@@ -108,6 +171,51 @@ export const portalApi = {
   revokeStaff: (id: string) =>
     api<StaffItem>(`/v1/bank-portal/staff/${id}/revoke`, { method: 'POST' }),
   audit: () => api<AuditItem[]>('/v1/bank-portal/audit'),
+}
+
+export const platformApi = {
+  login: (email: string, password: string) =>
+    requestJson<{ token: string; email: string; role: string; expires_in: number }>(
+      '/v1/platform/auth/login',
+      { method: 'POST', body: JSON.stringify({ email, password }) },
+    ),
+  banks: () => platformApiRequest<PartnerBankRow[]>('/v1/platform/banks'),
+  createBank: (body: {
+    bank_id: string
+    bank_name: string
+    short_code: string
+    hq_city?: string
+    supported_tiers?: string[]
+    super_admin_email?: string
+  }) =>
+    platformApiRequest<{
+      bank: PartnerBankRow
+      super_admin_email: string
+      temporary_password: string
+    }>('/v1/platform/banks', { method: 'POST', body: JSON.stringify(body) }),
+  patchBank: (
+    bank_id: string,
+    body: {
+      bank_name?: string
+      short_code?: string
+      hq_city?: string
+      supported_tiers?: string[]
+      active?: boolean
+    },
+  ) =>
+    platformApiRequest<PartnerBankRow>(`/v1/platform/banks/${bank_id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  resetSuperAdmin: (bank_id: string, email?: string) =>
+    platformApiRequest<{
+      bank_id: string
+      super_admin_email: string
+      temporary_password: string
+    }>(`/v1/platform/banks/${bank_id}/reset-super-admin`, {
+      method: 'POST',
+      body: JSON.stringify({ confirm: true, email }),
+    }),
 }
 
 export type QueueItem = {
