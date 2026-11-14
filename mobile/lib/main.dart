@@ -826,30 +826,36 @@ class _OnboardingShellState extends State<OnboardingShell> with WidgetsBindingOb
                   duration: const Duration(milliseconds: 260),
                   switchInCurve: Curves.easeOutCubic,
                   switchOutCurve: Curves.easeInCubic,
-                  child: Padding(
+                  child: KeyedSubtree(
                     key: ValueKey(shellTab),
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
                     child: switch (shellTab) {
+                      // Home is a full landing scroll — edge padding lives inside the hero/sections.
                       ShellTab.home => HomeTab(
                           locale: locale,
                           partnerCount: partnerBankCount,
                           busy: busy,
                           onOpenBank: _loadBanksAndStart,
                         ),
-                      ShellTab.passport => _buildPassport(context),
-                      ShellTab.settings => SettingsTab(
-                          locale: locale,
-                          themeMode: widget.themeMode,
-                          appLockEnabled: appLockEnabled,
-                          biometricEnabled: biometricUnlockEnabled,
-                          onLocale: (v) async {
-                            setState(() => locale = v);
-                            await _persistSession();
-                          },
-                          onThemeMode: widget.onThemeModeChanged,
-                          onConfigureLock: () => _configureAppLock(context),
-                          onSignOut: _signOut,
-                          onDevApiBase: () => _openSettings(context),
+                      ShellTab.passport => Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                          child: _buildPassport(context),
+                        ),
+                      ShellTab.settings => Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+                          child: SettingsTab(
+                            locale: locale,
+                            themeMode: widget.themeMode,
+                            appLockEnabled: appLockEnabled,
+                            biometricEnabled: biometricUnlockEnabled,
+                            onLocale: (v) async {
+                              setState(() => locale = v);
+                              await _persistSession();
+                            },
+                            onThemeMode: widget.onThemeModeChanged,
+                            onConfigureLock: () => _configureAppLock(context),
+                            onSignOut: _signOut,
+                            onDevApiBase: () => _openSettings(context),
+                          ),
                         ),
                     },
                   ),
@@ -1041,6 +1047,10 @@ class _OnboardingShellState extends State<OnboardingShell> with WidgetsBindingOb
         var enableLock = appLockEnabled;
         var enableBio = biometricUnlockEnabled;
         String? dialogError;
+        final bioAvailableFuture = Future.wait<bool>([
+          _localAuth.canCheckBiometrics,
+          _localAuth.isDeviceSupported(),
+        ]).then((flags) => flags[0] || flags[1]).catchError((_) => false);
 
         return StatefulBuilder(
           builder: (ctx, setLocal) {
@@ -1085,6 +1095,11 @@ class _OnboardingShellState extends State<OnboardingShell> with WidgetsBindingOb
                   enableBio: enableBio,
                   newPin: newCtrl.text.trim(),
                   currentPin: currentCtrl.text.trim(),
+                  keepExistingPin: PinChangePolicy.isKeepExistingPin(
+                    existingHash: appPinHash,
+                    newPin: newCtrl.text.trim(),
+                    confirmPin: confirmCtrl.text.trim(),
+                  ),
                 ),
               );
             }
@@ -1107,7 +1122,7 @@ class _OnboardingShellState extends State<OnboardingShell> with WidgetsBindingOb
                       }),
                     ),
                     if (enableLock) ...[
-                      if (needsCurrent)
+                      if (needsCurrent) ...[
                         TextField(
                           controller: currentCtrl,
                           obscureText: true,
@@ -1115,13 +1130,28 @@ class _OnboardingShellState extends State<OnboardingShell> with WidgetsBindingOb
                           maxLength: 6,
                           decoration: InputDecoration(labelText: s.t('lock.current_pin')),
                         ),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            s.t('lock.keep_pin_hint'),
+                            style: TextStyle(
+                              color: Theme.of(ctx).brightness == Brightness.dark
+                                  ? const Color(0xFF9AABBC)
+                                  : EkycColors.muted,
+                              fontSize: 12,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                       TextField(
                         controller: newCtrl,
                         obscureText: true,
                         keyboardType: TextInputType.number,
                         maxLength: 6,
                         decoration: InputDecoration(
-                          labelText: needsCurrent ? s.t('lock.new_pin') : s.t('lock.pin'),
+                          labelText: needsCurrent ? s.t('lock.new_pin_optional') : s.t('lock.pin'),
                         ),
                       ),
                       TextField(
@@ -1129,17 +1159,23 @@ class _OnboardingShellState extends State<OnboardingShell> with WidgetsBindingOb
                         obscureText: true,
                         keyboardType: TextInputType.number,
                         maxLength: 6,
-                        decoration: InputDecoration(labelText: s.t('lock.confirm_pin')),
+                        decoration: InputDecoration(
+                          labelText: needsCurrent ? s.t('lock.confirm_pin_optional') : s.t('lock.confirm_pin'),
+                        ),
                       ),
                       FutureBuilder<bool>(
-                        future: _localAuth.canCheckBiometrics,
+                        future: bioAvailableFuture,
                         builder: (context, snap) {
                           if (snap.data != true) return const SizedBox.shrink();
                           return SwitchListTile(
                             contentPadding: EdgeInsets.zero,
                             title: Text(s.t('settings.bio_enable')),
+                            subtitle: Text(s.t('settings.bio_enable_hint')),
                             value: enableBio,
-                            onChanged: (v) => setLocal(() => enableBio = v),
+                            onChanged: (v) => setLocal(() {
+                              enableBio = v;
+                              dialogError = null;
+                            }),
                           );
                         },
                       ),
@@ -1181,11 +1217,18 @@ class _OnboardingShellState extends State<OnboardingShell> with WidgetsBindingOb
       await _pinRepo.clearPinHash();
     } else {
       appLockEnabled = true;
-      appPinHash = _hashPin(result.newPin);
-      await _pinRepo.savePinHash(appPinHash!);
+      if (!result.keepExistingPin) {
+        appPinHash = _hashPin(result.newPin);
+        await _pinRepo.savePinHash(appPinHash!);
+      }
       if (result.enableBio) {
-        final canBio = await _localAuth.canCheckBiometrics;
-        biometricUnlockEnabled = canBio;
+        try {
+          final canBio = await _localAuth.canCheckBiometrics;
+          final supported = await _localAuth.isDeviceSupported();
+          biometricUnlockEnabled = canBio || supported;
+        } catch (_) {
+          biometricUnlockEnabled = false;
+        }
       } else {
         biometricUnlockEnabled = false;
       }
@@ -1978,10 +2021,12 @@ class _LockDialogResult {
     required this.enableBio,
     required this.newPin,
     required this.currentPin,
+    this.keepExistingPin = false,
   });
 
   final bool enableLock;
   final bool enableBio;
   final String newPin;
   final String currentPin;
+  final bool keepExistingPin;
 }
